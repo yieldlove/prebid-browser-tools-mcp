@@ -38,23 +38,23 @@ server.tool("getConsoleLogs", "Check our browser logs", async () => {
   };
 });
 
-// server.tool(
-//   "getConsoleErrors",
-//   "Check our browsers console errors",
-//   async () => {
-//     const response = await fetch(`http://127.0.0.1:${PORT}/console-errors`);
-//     const json = await response.json();
-//     const last50 = json.slice(-50);
-//     return {
-//       content: [
-//         {
-//           type: "text",
-//           text: JSON.stringify(last50, null, 2),
-//         },
-//       ],
-//     };
-//   }
-// );
+server.tool(
+  "getConsoleErrors",
+  "Check our browsers console errors",
+  async () => {
+    const response = await fetch(`http://127.0.0.1:${PORT}/console-errors`);
+    const json = await response.json();
+    const last50 = json.slice(-50);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(last50, null, 2),
+        },
+      ],
+    };
+  }
+);
 
 // Return all HTTP errors (4xx/5xx)
 server.tool("getNetworkErrors", "Check our network ERROR logs", async () => {
