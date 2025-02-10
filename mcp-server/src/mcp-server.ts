@@ -44,12 +44,11 @@ server.tool(
   async () => {
     const response = await fetch(`http://127.0.0.1:${PORT}/console-errors`);
     const json = await response.json();
-    const last50 = json.slice(-50);
     return {
       content: [
         {
           type: "text",
-          text: JSON.stringify(last50, null, 2),
+          text: JSON.stringify(json, null, 2),
         },
       ],
     };
