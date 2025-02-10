@@ -1,0 +1,18 @@
+{
+    "name": "AI Browser Connector",
+    "version": "1.0.0",
+    "description": "Captures console and network logs then sends them to a local aggregator for MCP usage",
+    "manifest_version": 3,
+    "devtools_page": "devtools.html",
+    "permissions": [
+      "activeTab",
+      "scripting",
+      "debugger",
+      "storage",
+      "tabs"
+    ],
+    "host_permissions": [
+      "<all_urls>"
+    ]
+  }
+  

@@ -1,0 +1,384 @@
+// devtools.js
+
+// Store settings with defaults
+let settings = {
+  logLimit: 50,
+  queryLimit: 30000,
+  stringSizeLimit: 500,
+  maxLogSize: 20000,
+  showRequestHeaders: false,
+  showResponseHeaders: false,
+};
+
+// Keep track of debugger state
+let isDebuggerAttached = false;
+const currentTabId = chrome.devtools.inspectedWindow.tabId;
+
+// Load saved settings on startup
+chrome.storage.local.get(["browserConnectorSettings"], (result) => {
+  if (result.browserConnectorSettings) {
+    settings = { ...settings, ...result.browserConnectorSettings };
+  }
+});
+
+// Listen for settings updates
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === "SETTINGS_UPDATED") {
+    settings = message.settings;
+  }
+});
+
+// Utility to recursively truncate strings in any data structure
+function truncateStringsInData(data, maxLength, depth = 0, path = "") {
+  // Add depth limit to prevent circular references
+  if (depth > 100) {
+    console.warn("Max depth exceeded at path:", path);
+    return "[MAX_DEPTH_EXCEEDED]";
+  }
+
+  console.log(`Processing at path: ${path}, type:`, typeof data);
+
+  if (typeof data === "string") {
+    if (data.length > maxLength) {
+      console.log(
+        `Truncating string at path ${path} from ${data.length} to ${maxLength}`
+      );
+      return data.substring(0, maxLength) + "... (truncated)";
+    }
+    return data;
+  }
+
+  if (Array.isArray(data)) {
+    console.log(`Processing array at path ${path} with length:`, data.length);
+    return data.map((item, index) =>
+      truncateStringsInData(item, maxLength, depth + 1, `${path}[${index}]`)
+    );
+  }
+
+  if (typeof data === "object" && data !== null) {
+    console.log(
+      `Processing object at path ${path} with keys:`,
+      Object.keys(data)
+    );
+    const result = {};
+    for (const [key, value] of Object.entries(data)) {
+      try {
+        result[key] = truncateStringsInData(
+          value,
+          maxLength,
+          depth + 1,
+          path ? `${path}.${key}` : key
+        );
+      } catch (e) {
+        console.error(`Error processing key ${key} at path ${path}:`, e);
+        result[key] = "[ERROR_PROCESSING]";
+      }
+    }
+    return result;
+  }
+
+  return data;
+}
+
+// Helper to calculate the size of an object
+function calculateObjectSize(obj) {
+  return JSON.stringify(obj).length;
+}
+
+// Helper to process array of objects with size limit
+function processArrayWithSizeLimit(array, maxTotalSize, processFunc) {
+  let currentSize = 0;
+  const result = [];
+
+  for (const item of array) {
+    // Process the item first
+    const processedItem = processFunc(item);
+    const itemSize = calculateObjectSize(processedItem);
+
+    // Check if adding this item would exceed the limit
+    if (currentSize + itemSize > maxTotalSize) {
+      console.log(
+        `Reached size limit (${currentSize}/${maxTotalSize}), truncating array`
+      );
+      break;
+    }
+
+    // Add item and update size
+    result.push(processedItem);
+    currentSize += itemSize;
+    console.log(
+      `Added item of size ${itemSize}, total size now: ${currentSize}`
+    );
+  }
+
+  return result;
+}
+
+// Modified processJsonString to handle arrays with size limit
+function processJsonString(jsonString, maxLength) {
+  console.log("Processing string of length:", jsonString?.length);
+  try {
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonString);
+      console.log(
+        "Successfully parsed as JSON, structure:",
+        JSON.stringify(Object.keys(parsed))
+      );
+    } catch (e) {
+      console.log("Not valid JSON, treating as string");
+      return truncateStringsInData(jsonString, maxLength, 0, "root");
+    }
+
+    // If it's an array, process with size limit
+    if (Array.isArray(parsed)) {
+      console.log("Processing array of objects with size limit");
+      const processed = processArrayWithSizeLimit(
+        parsed,
+        settings.maxLogSize,
+        (item) => truncateStringsInData(item, maxLength, 0, "root")
+      );
+      const result = JSON.stringify(processed);
+      console.log(
+        `Processed array: ${parsed.length} -> ${processed.length} items`
+      );
+      return result;
+    }
+
+    // Otherwise process as before
+    const processed = truncateStringsInData(parsed, maxLength, 0, "root");
+    const result = JSON.stringify(processed);
+    console.log("Processed JSON string length:", result.length);
+    return result;
+  } catch (e) {
+    console.error("Error in processJsonString:", e);
+    return jsonString.substring(0, maxLength) + "... (truncated)";
+  }
+}
+
+// Utility to send logs to browser-connector
+function sendToBrowserConnector(logData) {
+  console.log("Original log data size:", JSON.stringify(logData).length);
+
+  // Process any string fields that might contain JSON
+  const processedData = { ...logData };
+
+  if (logData.type === "network-request") {
+    console.log("Processing network request");
+    if (processedData.requestBody) {
+      console.log(
+        "Request body size before:",
+        processedData.requestBody.length
+      );
+      processedData.requestBody = processJsonString(
+        processedData.requestBody,
+        settings.stringSizeLimit
+      );
+      console.log("Request body size after:", processedData.requestBody.length);
+    }
+    if (processedData.responseBody) {
+      console.log(
+        "Response body size before:",
+        processedData.responseBody.length
+      );
+      processedData.responseBody = processJsonString(
+        processedData.responseBody,
+        settings.stringSizeLimit
+      );
+      console.log(
+        "Response body size after:",
+        processedData.responseBody.length
+      );
+    }
+  } else if (
+    logData.type === "console-log" ||
+    logData.type === "console-error"
+  ) {
+    console.log("Processing console message");
+    if (processedData.message) {
+      console.log("Message size before:", processedData.message.length);
+      processedData.message = processJsonString(
+        processedData.message,
+        settings.stringSizeLimit
+      );
+      console.log("Message size after:", processedData.message.length);
+    }
+  }
+
+  // Add settings to the request
+  const payload = {
+    data: {
+      ...processedData,
+      timestamp: Date.now(),
+    },
+    settings: {
+      logLimit: settings.logLimit,
+      queryLimit: settings.queryLimit,
+      showRequestHeaders: settings.showRequestHeaders,
+      showResponseHeaders: settings.showResponseHeaders,
+    },
+  };
+
+  const finalPayloadSize = JSON.stringify(payload).length;
+  console.log("Final payload size:", finalPayloadSize);
+
+  if (finalPayloadSize > 1000000) {
+    // 1MB warning threshold
+    console.warn("Warning: Large payload detected:", finalPayloadSize);
+    console.warn(
+      "Payload preview:",
+      JSON.stringify(payload).substring(0, 1000) + "..."
+    );
+  }
+
+  fetch("http://127.0.0.1:3025/extension-log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch((error) => {
+    console.error("Failed to send log to browser-connector:", error);
+  });
+}
+
+// 1) Listen for network requests
+chrome.devtools.network.onRequestFinished.addListener((request) => {
+  if (request._resourceType === "xhr" || request._resourceType === "fetch") {
+    request.getContent((responseBody) => {
+      const entry = {
+        type: "network-request",
+        url: request.request.url,
+        method: request.request.method,
+        status: request.response.status,
+        requestHeaders: request.request.headers,
+        responseHeaders: request.response.headers,
+        requestBody: request.request.postData?.text ?? "",
+        responseBody: responseBody ?? "",
+      };
+      sendToBrowserConnector(entry);
+    });
+  }
+});
+
+// Move the console message listener outside the panel creation
+const consoleMessageListener = (source, method, params) => {
+  console.log("Debugger event:", method, source.tabId, currentTabId);
+
+  // Only process events for our tab
+  if (source.tabId !== currentTabId) {
+    console.log("Ignoring event from different tab");
+    return;
+  }
+
+  if (method === "Console.messageAdded") {
+    console.log("Console message received:", params.message);
+    const entry = {
+      type: params.message.level === "error" ? "console-error" : "console-log",
+      level: params.message.level,
+      message: params.message.text,
+      timestamp: Date.now(),
+    };
+    console.log("Sending console entry:", entry);
+    sendToBrowserConnector(entry);
+  } else {
+    console.log("Unhandled debugger method:", method);
+  }
+};
+
+// Helper function to attach debugger
+function attachDebugger() {
+  if (isDebuggerAttached) {
+    console.log("Debugger already attached");
+    return;
+  }
+
+  // Check if the tab still exists
+  chrome.tabs.get(currentTabId, (tab) => {
+    if (chrome.runtime.lastError) {
+      console.log("Tab no longer exists:", chrome.runtime.lastError);
+      isDebuggerAttached = false;
+      return;
+    }
+
+    console.log("Attaching debugger to tab:", currentTabId);
+    chrome.debugger.attach({ tabId: currentTabId }, "1.3", () => {
+      if (chrome.runtime.lastError) {
+        console.error("Failed to attach debugger:", chrome.runtime.lastError);
+        isDebuggerAttached = false;
+        return;
+      }
+
+      isDebuggerAttached = true;
+      console.log("Debugger successfully attached");
+
+      // Add the event listener when attaching
+      chrome.debugger.onEvent.addListener(consoleMessageListener);
+
+      chrome.debugger.sendCommand(
+        { tabId: currentTabId },
+        "Console.enable",
+        {},
+        () => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              "Failed to enable console:",
+              chrome.runtime.lastError
+            );
+            return;
+          }
+          console.log("Console API successfully enabled");
+        }
+      );
+    });
+  });
+}
+
+// Helper function to detach debugger
+function detachDebugger() {
+  if (!isDebuggerAttached) return;
+
+  // Remove the event listener when detaching
+  chrome.debugger.onEvent.removeListener(consoleMessageListener);
+
+  // Check if debugger is actually attached before trying to detach
+  chrome.debugger.getTargets((targets) => {
+    const isStillAttached = targets.some(
+      (target) => target.tabId === currentTabId && target.attached
+    );
+
+    if (!isStillAttached) {
+      console.log("Debugger already detached");
+      isDebuggerAttached = false;
+      return;
+    }
+
+    chrome.debugger.detach({ tabId: currentTabId }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Failed to detach debugger:", chrome.runtime.lastError);
+        isDebuggerAttached = false;
+        return;
+      }
+      isDebuggerAttached = false;
+      console.log("Debugger detached");
+    });
+  });
+}
+
+// 2) Use DevTools Protocol to capture console logs
+chrome.devtools.panels.create("Browser Logs", "", "panel.html", (panel) => {
+  // Initial attach - we'll keep the debugger attached as long as DevTools is open
+  attachDebugger();
+
+  // Remove the panel show/hide listeners since we want to stay attached
+  // panel.onShown.addListener(() => {
+  //   attachDebugger();
+  // });
+  //
+  // panel.onHidden.addListener(() => {
+  //   detachDebugger();
+  // });
+});
+
+// Clean up only when the entire DevTools window is closed
+window.addEventListener("unload", () => {
+  detachDebugger();
+});
