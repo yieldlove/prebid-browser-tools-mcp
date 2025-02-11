@@ -2,6 +2,11 @@ import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
 import { tokenizeAndEstimateCost } from "llm-cost";
+import WebSocket from "ws";
+import fs from "fs";
+import path from "path";
+import { IncomingMessage } from "http";
+import { Socket } from "net";
 
 // We store logs in memory
 const consoleLogs: any[] = [];
@@ -20,6 +25,9 @@ let currentSettings = {
   stringSizeLimit: 500,
   maxLogSize: 20000,
 };
+
+// Add new storage for selected element
+let selectedElement: any = null;
 
 const app = express();
 const PORT = 3025;
@@ -154,6 +162,9 @@ app.post("/extension-log", (req, res) => {
           networkSuccess.shift();
       }
       break;
+    case "selected-element":
+      selectedElement = data.element;
+      break;
   }
   res.json({ status: "ok" });
 });
@@ -188,18 +199,161 @@ app.get("/all-xhr", (req, res) => {
   res.json(truncatedLogs);
 });
 
+// Add new endpoint for selected element
+app.post("/selected-element", (req, res) => {
+  const { data } = req.body;
+  selectedElement = data;
+  res.json({ status: "ok" });
+});
+
+app.get("/selected-element", (req, res) => {
+  res.json(selectedElement || { message: "No element selected" });
+});
+
 app.get("/.port", (req, res) => {
   res.send(PORT.toString());
 });
 
-// Start the server
+interface ScreenshotMessage {
+  type: "screenshot-data" | "screenshot-error";
+  data?: string;
+  path?: string;
+  error?: string;
+}
+
+export class BrowserConnector {
+  private wss: WebSocket.Server;
+  private activeConnection: WebSocket | null = null;
+  private app: express.Application;
+  private server: any;
+
+  constructor(app: express.Application, server: any) {
+    this.app = app;
+    this.server = server;
+
+    // Initialize WebSocket server using the existing HTTP server
+    this.wss = new WebSocket.Server({
+      noServer: true,
+      path: "/extension-ws",
+    });
+
+    // Handle upgrade requests for WebSocket
+    this.server.on(
+      "upgrade",
+      (request: IncomingMessage, socket: Socket, head: Buffer) => {
+        if (request.url === "/extension-ws") {
+          this.wss.handleUpgrade(request, socket, head, (ws) => {
+            this.wss.emit("connection", ws, request);
+          });
+        }
+      }
+    );
+
+    this.wss.on("connection", (ws) => {
+      console.log("Chrome extension connected via WebSocket");
+      this.activeConnection = ws;
+
+      ws.on("close", () => {
+        console.log("Chrome extension disconnected");
+        if (this.activeConnection === ws) {
+          this.activeConnection = null;
+        }
+      });
+    });
+
+    // Add screenshot endpoint
+    this.app.post("/screenshot", async (req, res) => {
+      await this.handleScreenshot(req, res);
+    });
+  }
+
+  private async handleScreenshot(req: express.Request, res: express.Response) {
+    if (!this.activeConnection) {
+      return res.status(503).json({ error: "Chrome extension not connected" });
+    }
+
+    try {
+      const result = await new Promise((resolve, reject) => {
+        // Set up one-time message handler for this screenshot request
+        const messageHandler = (message: WebSocket.Data) => {
+          try {
+            const response: ScreenshotMessage = JSON.parse(message.toString());
+
+            if (response.type === "screenshot-error") {
+              reject(new Error(response.error));
+              return;
+            }
+
+            if (
+              response.type === "screenshot-data" &&
+              response.data &&
+              response.path
+            ) {
+              // Remove the data:image/png;base64, prefix
+              const base64Data = response.data.replace(
+                /^data:image\/png;base64,/,
+                ""
+              );
+
+              // Ensure the directory exists
+              const dir = path.dirname(response.path);
+              fs.mkdirSync(dir, { recursive: true });
+
+              // Generate a unique filename using timestamp
+              const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+              const filename = `screenshot-${timestamp}.png`;
+              const fullPath = path.join(response.path, filename);
+
+              // Write the file
+              fs.writeFileSync(fullPath, base64Data, "base64");
+              resolve({
+                path: fullPath,
+                filename: filename,
+              });
+            }
+          } catch (error) {
+            reject(error);
+          } finally {
+            this.activeConnection?.removeListener("message", messageHandler);
+          }
+        };
+
+        // Add temporary message handler
+        this.activeConnection?.on("message", messageHandler);
+
+        // Request screenshot
+        this.activeConnection?.send(
+          JSON.stringify({ type: "take-screenshot" })
+        );
+
+        // Set timeout
+        setTimeout(() => {
+          this.activeConnection?.removeListener("message", messageHandler);
+          reject(new Error("Screenshot timeout"));
+        }, 30000); // 30 second timeout
+      });
+
+      res.json(result);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        res.status(500).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: "An unknown error occurred" });
+      }
+    }
+  }
+}
+
+// Move the server creation before BrowserConnector instantiation
 const server = app.listen(PORT, () => {
   console.log(`Aggregator listening on http://127.0.0.1:${PORT}`);
 
   // Write the port to a file so mcp-server can read it
-  const fs = require("fs");
   fs.writeFileSync(".port", PORT.toString());
 });
+
+// Initialize the browser connector with the existing app AND server
+const browserConnector = new BrowserConnector(app, server);
 
 // Handle shutdown gracefully
 process.on("SIGINT", () => {

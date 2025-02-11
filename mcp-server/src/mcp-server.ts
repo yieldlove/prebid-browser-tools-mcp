@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import fs from "fs";
+import path from "path";
+import { z } from "zod";
+// import fs from "fs";
 
 // Create the MCP server
 const server = new McpServer({
@@ -9,15 +11,15 @@ const server = new McpServer({
 });
 
 // Function to get the port from the .port file
-function getPort(): number {
-  try {
-    const port = parseInt(fs.readFileSync(".port", "utf8"));
-    return port;
-  } catch (err) {
-    console.error("Could not read port file, defaulting to 3000");
-    return 3025;
-  }
-}
+// function getPort(): number {
+//   try {
+//     const port = parseInt(fs.readFileSync(".port", "utf8"));
+//     return port;
+//   } catch (err) {
+//     console.error("Could not read port file, defaulting to 3000");
+//     return 3025;
+//   }
+// }
 
 // const PORT = getPort();
 
@@ -96,6 +98,75 @@ server.tool("getNetworkLogs", "Check ALL our network logs", async () => {
     ],
   };
 });
+
+// Add new tool for taking screenshots
+server.tool(
+  "takeScreenshot",
+  "Take a screenshot of the current browser tab",
+  async () => {
+    try {
+      const response = await fetch(`http://127.0.0.1:${PORT}/screenshot`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Screenshot saved to: ${
+                result.path
+              }\nFilename: ${path.basename(result.path)}`,
+            },
+          ],
+        };
+      } else {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error taking screenshot: ${result.error}`,
+            },
+          ],
+        };
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Failed to take screenshot: ${errorMessage}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Add new tool for getting selected element
+server.tool(
+  "getSelectedElement",
+  "Get the selected element from the browser",
+  async () => {
+    const response = await fetch(`http://127.0.0.1:${PORT}/selected-element`);
+    const json = await response.json();
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(json, null, 2),
+        },
+      ],
+    };
+  }
+);
 
 // Start receiving messages on stdio
 (async () => {

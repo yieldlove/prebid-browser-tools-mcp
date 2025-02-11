@@ -8,6 +8,7 @@ let settings = {
   maxLogSize: 20000,
   showRequestHeaders: false,
   showResponseHeaders: false,
+  screenshotPath: "", // Add new setting for screenshot path
 };
 
 // Keep track of debugger state
@@ -368,17 +369,144 @@ chrome.devtools.panels.create("Browser Logs", "", "panel.html", (panel) => {
   // Initial attach - we'll keep the debugger attached as long as DevTools is open
   attachDebugger();
 
-  // Remove the panel show/hide listeners since we want to stay attached
-  // panel.onShown.addListener(() => {
-  //   attachDebugger();
-  // });
-  //
-  // panel.onHidden.addListener(() => {
-  //   detachDebugger();
-  // });
+  // Add message passing to panel.js
+  panel.onShown.addListener((panelWindow) => {
+    panelWindow.postMessage({ type: "initializeSelectionButton" }, "*");
+  });
 });
 
 // Clean up only when the entire DevTools window is closed
 window.addEventListener("unload", () => {
   detachDebugger();
+});
+
+// Function to capture and send element data
+function captureAndSendElement() {
+  chrome.devtools.inspectedWindow.eval(
+    `(function() {
+      const el = $0;  // $0 is the currently selected element in DevTools
+      if (!el) return null;
+
+      const rect = el.getBoundingClientRect();
+      
+      return {
+        tagName: el.tagName,
+        id: el.id,
+        className: el.className,
+        textContent: el.textContent?.substring(0, 100),
+        attributes: Array.from(el.attributes).map(attr => ({
+          name: attr.name,
+          value: attr.value
+        })),
+        dimensions: {
+          width: rect.width,
+          height: rect.height,
+          top: rect.top,
+          left: rect.left
+        },
+        innerHTML: el.innerHTML.substring(0, 500)
+      };
+    })()`,
+    (result, isException) => {
+      if (isException || !result) return;
+
+      console.log("Element selected:", result);
+
+      // Send to browser connector
+      sendToBrowserConnector({
+        type: "selected-element",
+        timestamp: Date.now(),
+        element: result,
+      });
+    }
+  );
+}
+
+// Listen for element selection in the Elements panel
+chrome.devtools.panels.elements.onSelectionChanged.addListener(() => {
+  captureAndSendElement();
+});
+
+// WebSocket connection management
+let ws = null;
+let wsReconnectTimeout = null;
+const WS_RECONNECT_DELAY = 5000; // 5 seconds
+
+function setupWebSocket() {
+  if (ws) {
+    ws.close();
+  }
+
+  ws = new WebSocket("ws://localhost:3025/extension-ws");
+
+  ws.onopen = () => {
+    console.log("WebSocket connected");
+    if (wsReconnectTimeout) {
+      clearTimeout(wsReconnectTimeout);
+      wsReconnectTimeout = null;
+    }
+  };
+
+  ws.onmessage = async (event) => {
+    try {
+      const message = JSON.parse(event.data);
+
+      if (message.type === "take-screenshot") {
+        if (!settings.screenshotPath) {
+          ws.send(
+            JSON.stringify({
+              type: "screenshot-error",
+              error: "Screenshot path not configured",
+            })
+          );
+          return;
+        }
+
+        // Capture screenshot of the current tab
+        chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
+          if (chrome.runtime.lastError) {
+            ws.send(
+              JSON.stringify({
+                type: "screenshot-error",
+                error: chrome.runtime.lastError.message,
+              })
+            );
+            return;
+          }
+
+          ws.send(
+            JSON.stringify({
+              type: "screenshot-data",
+              data: dataUrl,
+              path: settings.screenshotPath,
+            })
+          );
+        });
+      }
+    } catch (error) {
+      console.error("Error processing WebSocket message:", error);
+    }
+  };
+
+  ws.onclose = () => {
+    console.log("WebSocket disconnected, attempting to reconnect...");
+    wsReconnectTimeout = setTimeout(setupWebSocket, WS_RECONNECT_DELAY);
+  };
+
+  ws.onerror = (error) => {
+    console.error("WebSocket error:", error);
+  };
+}
+
+// Initialize WebSocket connection when DevTools opens
+setupWebSocket();
+
+// Clean up WebSocket when DevTools closes
+window.addEventListener("unload", () => {
+  if (ws) {
+    ws.close();
+  }
+  if (wsReconnectTimeout) {
+    clearTimeout(wsReconnectTimeout);
+  }
 });

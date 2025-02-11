@@ -6,6 +6,7 @@ let settings = {
   showRequestHeaders: false,
   showResponseHeaders: false,
   maxLogSize: 20000,
+  screenshotPath: "",
 };
 
 // Load saved settings on startup
@@ -27,6 +28,7 @@ const showResponseHeadersCheckbox = document.getElementById(
   "show-response-headers"
 );
 const maxLogSizeInput = document.getElementById("max-log-size");
+const screenshotPathInput = document.getElementById("screenshot-path");
 
 // Update UI from settings
 function updateUIFromSettings() {
@@ -36,6 +38,7 @@ function updateUIFromSettings() {
   showRequestHeadersCheckbox.checked = settings.showRequestHeaders;
   showResponseHeadersCheckbox.checked = settings.showResponseHeaders;
   maxLogSizeInput.value = settings.maxLogSize;
+  screenshotPathInput.value = settings.screenshotPath;
 }
 
 // Save settings
@@ -76,5 +79,10 @@ showResponseHeadersCheckbox.addEventListener("change", (e) => {
 
 maxLogSizeInput.addEventListener("change", (e) => {
   settings.maxLogSize = parseInt(e.target.value, 10);
+  saveSettings();
+});
+
+screenshotPathInput.addEventListener("change", (e) => {
+  settings.screenshotPath = e.target.value;
   saveSettings();
 });
