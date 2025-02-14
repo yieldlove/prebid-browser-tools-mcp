@@ -13,7 +13,10 @@ let settings = {
 
 // Keep track of debugger state
 let isDebuggerAttached = false;
+let attachDebuggerRetries = 0;
 const currentTabId = chrome.devtools.inspectedWindow.tabId;
+const MAX_ATTACH_RETRIES = 3;
+const ATTACH_RETRY_DELAY = 1000; // 1 second
 
 // Load saved settings on startup
 chrome.storage.local.get(["browserConnectorSettings"], (result) => {
@@ -22,10 +25,50 @@ chrome.storage.local.get(["browserConnectorSettings"], (result) => {
   }
 });
 
-// Listen for settings updates
-chrome.runtime.onMessage.addListener((message) => {
+// Listen for settings updates and screenshot capture requests
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "SETTINGS_UPDATED") {
     settings = message.settings;
+  } else if (message.type === "CAPTURE_SCREENSHOT") {
+    // Capture screenshot of the current tab
+    chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
+      if (chrome.runtime.lastError) {
+        console.error("Screenshot capture failed:", chrome.runtime.lastError);
+        sendResponse({
+          success: false,
+          error: chrome.runtime.lastError.message,
+        });
+        return;
+      }
+
+      // Send screenshot data to browser connector via HTTP POST
+      fetch("http://127.0.0.1:3025/screenshot", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          data: dataUrl,
+          path: settings.screenshotPath,
+        }),
+      })
+        .then((response) => response.json())
+        .then((result) => {
+          if (result.error) {
+            sendResponse({ success: false, error: result.error });
+          } else {
+            sendResponse({ success: true, path: result.path });
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to save screenshot:", error);
+          sendResponse({
+            success: false,
+            error: error.message || "Failed to save screenshot",
+          });
+        });
+    });
+    return true; // Required to use sendResponse asynchronously
   }
 });
 
@@ -157,9 +200,17 @@ function processJsonString(jsonString, maxLength) {
   }
 }
 
-// Utility to send logs to browser-connector
+// Helper to send logs to browser-connector
 function sendToBrowserConnector(logData) {
-  console.log("Original log data size:", JSON.stringify(logData).length);
+  if (!logData) {
+    console.error("No log data provided to sendToBrowserConnector");
+    return;
+  }
+
+  console.log("Sending log data to browser connector:", {
+    type: logData.type,
+    timestamp: logData.timestamp,
+  });
 
   // Process any string fields that might contain JSON
   const processedData = { ...logData };
@@ -224,7 +275,6 @@ function sendToBrowserConnector(logData) {
   console.log("Final payload size:", finalPayloadSize);
 
   if (finalPayloadSize > 1000000) {
-    // 1MB warning threshold
     console.warn("Warning: Large payload detected:", finalPayloadSize);
     console.warn(
       "Payload preview:",
@@ -236,10 +286,37 @@ function sendToBrowserConnector(logData) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      console.log("Successfully sent log to browser-connector");
+      return response.json();
+    })
+    .then((data) => {
+      console.log("Browser connector response:", data);
+    })
+    .catch((error) => {
+      console.error("Failed to send log to browser-connector:", error);
+    });
+}
+
+// Add function to wipe logs
+function wipeLogs() {
+  fetch("http://127.0.0.1:3025/wipelogs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
   }).catch((error) => {
-    console.error("Failed to send log to browser-connector:", error);
+    console.error("Failed to wipe logs:", error);
   });
 }
+
+// Listen for page refreshes
+chrome.devtools.network.onNavigated.addListener(() => {
+  console.log("Page navigated/refreshed - wiping logs");
+  wipeLogs();
+});
 
 // 1) Listen for network requests
 chrome.devtools.network.onRequestFinished.addListener((request) => {
@@ -260,84 +337,65 @@ chrome.devtools.network.onRequestFinished.addListener((request) => {
   }
 });
 
-// Move the console message listener outside the panel creation
-const consoleMessageListener = (source, method, params) => {
-  console.log("Debugger event:", method, source.tabId, currentTabId);
-
-  // Only process events for our tab
-  if (source.tabId !== currentTabId) {
-    console.log("Ignoring event from different tab");
-    return;
-  }
-
-  if (method === "Console.messageAdded") {
-    console.log("Console message received:", params.message);
-    const entry = {
-      type: params.message.level === "error" ? "console-error" : "console-log",
-      level: params.message.level,
-      message: params.message.text,
-      timestamp: Date.now(),
-    };
-    console.log("Sending console entry:", entry);
-    sendToBrowserConnector(entry);
-  } else {
-    console.log("Unhandled debugger method:", method);
-  }
-};
-
 // Helper function to attach debugger
-function attachDebugger() {
-  if (isDebuggerAttached) {
-    console.log("Debugger already attached");
-    return;
-  }
+async function attachDebugger() {
+  // First check if we're already attached to this tab
+  chrome.debugger.getTargets((targets) => {
+    const isAlreadyAttached = targets.some(
+      (target) => target.tabId === currentTabId && target.attached
+    );
 
-  // Check if the tab still exists
-  chrome.tabs.get(currentTabId, (tab) => {
+    if (isAlreadyAttached) {
+      console.log("Found existing debugger attachment, detaching first...");
+      // Force detach first to ensure clean state
+      chrome.debugger.detach({ tabId: currentTabId }, () => {
+        // Ignore any errors during detach
+        if (chrome.runtime.lastError) {
+          console.log("Error during forced detach:", chrome.runtime.lastError);
+        }
+        // Now proceed with fresh attachment
+        performAttach();
+      });
+    } else {
+      // No existing attachment, proceed directly
+      performAttach();
+    }
+  });
+}
+
+function performAttach() {
+  console.log("Performing debugger attachment to tab:", currentTabId);
+  chrome.debugger.attach({ tabId: currentTabId }, "1.3", () => {
     if (chrome.runtime.lastError) {
-      console.log("Tab no longer exists:", chrome.runtime.lastError);
+      console.error("Failed to attach debugger:", chrome.runtime.lastError);
       isDebuggerAttached = false;
       return;
     }
 
-    console.log("Attaching debugger to tab:", currentTabId);
-    chrome.debugger.attach({ tabId: currentTabId }, "1.3", () => {
-      if (chrome.runtime.lastError) {
-        console.error("Failed to attach debugger:", chrome.runtime.lastError);
-        isDebuggerAttached = false;
-        return;
-      }
+    isDebuggerAttached = true;
+    console.log("Debugger successfully attached");
 
-      isDebuggerAttached = true;
-      console.log("Debugger successfully attached");
+    // Add the event listener when attaching
+    chrome.debugger.onEvent.addListener(consoleMessageListener);
 
-      // Add the event listener when attaching
-      chrome.debugger.onEvent.addListener(consoleMessageListener);
-
-      chrome.debugger.sendCommand(
-        { tabId: currentTabId },
-        "Console.enable",
-        {},
-        () => {
-          if (chrome.runtime.lastError) {
-            console.error(
-              "Failed to enable console:",
-              chrome.runtime.lastError
-            );
-            return;
-          }
-          console.log("Console API successfully enabled");
+    chrome.debugger.sendCommand(
+      { tabId: currentTabId },
+      "Console.enable",
+      {},
+      () => {
+        if (chrome.runtime.lastError) {
+          console.error("Failed to enable console:", chrome.runtime.lastError);
+          return;
         }
-      );
-    });
+        console.log("Console API successfully enabled");
+      }
+    );
   });
 }
 
 // Helper function to detach debugger
 function detachDebugger() {
-  if (!isDebuggerAttached) return;
-
-  // Remove the event listener when detaching
+  // Remove the event listener first
   chrome.debugger.onEvent.removeListener(consoleMessageListener);
 
   // Check if debugger is actually attached before trying to detach
@@ -354,9 +412,10 @@ function detachDebugger() {
 
     chrome.debugger.detach({ tabId: currentTabId }, () => {
       if (chrome.runtime.lastError) {
-        console.error("Failed to detach debugger:", chrome.runtime.lastError);
-        isDebuggerAttached = false;
-        return;
+        console.warn(
+          "Warning during debugger detach:",
+          chrome.runtime.lastError
+        );
       }
       isDebuggerAttached = false;
       console.log("Debugger detached");
@@ -364,20 +423,48 @@ function detachDebugger() {
   });
 }
 
+// Move the console message listener outside the panel creation
+const consoleMessageListener = (source, method, params) => {
+  // Only process events for our tab
+  if (source.tabId !== currentTabId) {
+    return;
+  }
+
+  if (method === "Console.messageAdded") {
+    console.log("Console message received:", params.message);
+    const entry = {
+      type: params.message.level === "error" ? "console-error" : "console-log",
+      level: params.message.level,
+      message: params.message.text,
+      timestamp: Date.now(),
+    };
+    console.log("Sending console entry:", entry);
+    sendToBrowserConnector(entry);
+  }
+};
+
 // 2) Use DevTools Protocol to capture console logs
-chrome.devtools.panels.create("Browser Logs", "", "panel.html", (panel) => {
+chrome.devtools.panels.create("BrowserToolsMCP", "", "panel.html", (panel) => {
   // Initial attach - we'll keep the debugger attached as long as DevTools is open
   attachDebugger();
 
-  // Add message passing to panel.js
+  // Handle panel showing
   panel.onShown.addListener((panelWindow) => {
-    panelWindow.postMessage({ type: "initializeSelectionButton" }, "*");
+    if (!isDebuggerAttached) {
+      attachDebugger();
+    }
   });
 });
 
-// Clean up only when the entire DevTools window is closed
+// Clean up when DevTools window is closed
 window.addEventListener("unload", () => {
   detachDebugger();
+  if (ws) {
+    ws.close();
+  }
+  if (wsReconnectTimeout) {
+    clearTimeout(wsReconnectTimeout);
+  }
 });
 
 // Function to capture and send element data
@@ -439,62 +526,73 @@ function setupWebSocket() {
 
   ws = new WebSocket("ws://localhost:3025/extension-ws");
 
+  ws.onmessage = async (event) => {
+    try {
+      const message = JSON.parse(event.data);
+      console.log("Chrome Extension: Received WebSocket message:", message);
+
+      if (message.type === "take-screenshot") {
+        console.log("Chrome Extension: Taking screenshot...");
+        // Capture screenshot of the current tab
+        chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              "Chrome Extension: Screenshot capture failed:",
+              chrome.runtime.lastError
+            );
+            ws.send(
+              JSON.stringify({
+                type: "screenshot-error",
+                error: chrome.runtime.lastError.message,
+                requestId: message.requestId,
+              })
+            );
+            return;
+          }
+
+          console.log("Chrome Extension: Screenshot captured successfully");
+          // Just send the screenshot data, let the server handle paths
+          const response = {
+            type: "screenshot-data",
+            data: dataUrl,
+            requestId: message.requestId,
+            // Only include path if it's configured in settings
+            ...(settings.screenshotPath && { path: settings.screenshotPath }),
+          };
+
+          console.log("Chrome Extension: Sending screenshot data response", {
+            ...response,
+            data: "[base64 data]",
+          });
+
+          ws.send(JSON.stringify(response));
+        });
+      }
+    } catch (error) {
+      console.error(
+        "Chrome Extension: Error processing WebSocket message:",
+        error
+      );
+    }
+  };
+
   ws.onopen = () => {
-    console.log("WebSocket connected");
+    console.log("Chrome Extension: WebSocket connected");
     if (wsReconnectTimeout) {
       clearTimeout(wsReconnectTimeout);
       wsReconnectTimeout = null;
     }
   };
 
-  ws.onmessage = async (event) => {
-    try {
-      const message = JSON.parse(event.data);
-
-      if (message.type === "take-screenshot") {
-        if (!settings.screenshotPath) {
-          ws.send(
-            JSON.stringify({
-              type: "screenshot-error",
-              error: "Screenshot path not configured",
-            })
-          );
-          return;
-        }
-
-        // Capture screenshot of the current tab
-        chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
-          if (chrome.runtime.lastError) {
-            ws.send(
-              JSON.stringify({
-                type: "screenshot-error",
-                error: chrome.runtime.lastError.message,
-              })
-            );
-            return;
-          }
-
-          ws.send(
-            JSON.stringify({
-              type: "screenshot-data",
-              data: dataUrl,
-              path: settings.screenshotPath,
-            })
-          );
-        });
-      }
-    } catch (error) {
-      console.error("Error processing WebSocket message:", error);
-    }
-  };
-
   ws.onclose = () => {
-    console.log("WebSocket disconnected, attempting to reconnect...");
+    console.log(
+      "Chrome Extension: WebSocket disconnected, attempting to reconnect..."
+    );
     wsReconnectTimeout = setTimeout(setupWebSocket, WS_RECONNECT_DELAY);
   };
 
   ws.onerror = (error) => {
-    console.error("WebSocket error:", error);
+    console.error("Chrome Extension: WebSocket error:", error);
   };
 }
 

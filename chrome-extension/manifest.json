@@ -1,7 +1,7 @@
 {
-    "name": "AI Browser Connector",
+    "name": "BrowserTools MCP",
     "version": "1.0.0",
-    "description": "Captures console and network logs then sends them to a local aggregator for MCP usage",
+    "description": "MCP tool for AI code editors to capture data from a browser such as console logs, network requests, screenshots and more",
     "manifest_version": 3,
     "devtools_page": "devtools.html",
     "permissions": [

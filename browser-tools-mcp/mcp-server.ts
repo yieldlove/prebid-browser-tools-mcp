@@ -1,13 +1,15 @@
+#!/usr/bin/env node
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import path from "path";
-import { z } from "zod";
+// import { z } from "zod";
 // import fs from "fs";
 
 // Create the MCP server
 const server = new McpServer({
-  name: "AI Browser Connector",
-  version: "1.0.0",
+  name: "Browsert Tools MCP",
+  version: "1.0.9",
 });
 
 // Function to get the port from the .port file
@@ -71,19 +73,19 @@ server.tool("getNetworkErrors", "Check our network ERROR logs", async () => {
   };
 });
 
-// Return all XHR/fetch requests
-server.tool("getNetworkSuccess", "Check our network SUCCESS logs", async () => {
-  const response = await fetch(`http://127.0.0.1:${PORT}/all-xhr`);
-  const json = await response.json();
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(json, null, 2),
-      },
-    ],
-  };
-});
+// // Return all XHR/fetch requests
+// server.tool("getNetworkSuccess", "Check our network SUCCESS logs", async () => {
+//   const response = await fetch(`http://127.0.0.1:${PORT}/all-xhr`);
+//   const json = await response.json();
+//   return {
+//     content: [
+//       {
+//         type: "text",
+//         text: JSON.stringify(json, null, 2),
+//       },
+//     ],
+//   };
+// });
 
 // Return all XHR/fetch requests
 server.tool("getNetworkLogs", "Check ALL our network logs", async () => {
@@ -105,12 +107,12 @@ server.tool(
   "Take a screenshot of the current browser tab",
   async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:${PORT}/screenshot`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(
+        `http://127.0.0.1:${PORT}/capture-screenshot`,
+        {
+          method: "POST",
+        }
+      );
 
       const result = await response.json();
 
@@ -167,6 +169,22 @@ server.tool(
     };
   }
 );
+
+// Add new tool for wiping logs
+server.tool("wipeLogs", "Wipe all browser logs from memory", async () => {
+  const response = await fetch(`http://127.0.0.1:${PORT}/wipelogs`, {
+    method: "POST",
+  });
+  const json = await response.json();
+  return {
+    content: [
+      {
+        type: "text",
+        text: json.message,
+      },
+    ],
+  };
+});
 
 // Start receiving messages on stdio
 (async () => {

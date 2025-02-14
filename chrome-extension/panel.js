@@ -29,6 +29,21 @@ const showResponseHeadersCheckbox = document.getElementById(
 );
 const maxLogSizeInput = document.getElementById("max-log-size");
 const screenshotPathInput = document.getElementById("screenshot-path");
+const captureScreenshotButton = document.getElementById("capture-screenshot");
+
+// Initialize collapsible advanced settings
+const advancedSettingsHeader = document.getElementById(
+  "advanced-settings-header"
+);
+const advancedSettingsContent = document.getElementById(
+  "advanced-settings-content"
+);
+const chevronIcon = advancedSettingsHeader.querySelector(".chevron");
+
+advancedSettingsHeader.addEventListener("click", () => {
+  advancedSettingsContent.classList.toggle("visible");
+  chevronIcon.classList.toggle("open");
+});
 
 // Update UI from settings
 function updateUIFromSettings() {
@@ -85,4 +100,49 @@ maxLogSizeInput.addEventListener("change", (e) => {
 screenshotPathInput.addEventListener("change", (e) => {
   settings.screenshotPath = e.target.value;
   saveSettings();
+});
+
+// Add screenshot capture functionality
+captureScreenshotButton.addEventListener("click", () => {
+  captureScreenshotButton.textContent = "Capturing...";
+
+  // Send message to devtools.js to capture screenshot
+  chrome.runtime.sendMessage({ type: "CAPTURE_SCREENSHOT" }, (response) => {
+    if (!response) {
+      captureScreenshotButton.textContent = "Failed to capture!";
+      console.error("Screenshot capture failed: No response received");
+    } else if (!response.success) {
+      captureScreenshotButton.textContent = "Failed to capture!";
+      console.error("Screenshot capture failed:", response.error);
+    } else {
+      captureScreenshotButton.textContent = "Screenshot captured!";
+    }
+    setTimeout(() => {
+      captureScreenshotButton.textContent = "Capture Screenshot";
+    }, 2000);
+  });
+});
+
+// Add wipe logs functionality
+const wipeLogsButton = document.getElementById("wipe-logs");
+wipeLogsButton.addEventListener("click", () => {
+  fetch("http://127.0.0.1:3025/wipelogs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  })
+    .then((response) => response.json())
+    .then((result) => {
+      console.log("Logs wiped successfully:", result.message);
+      wipeLogsButton.textContent = "Logs Wiped!";
+      setTimeout(() => {
+        wipeLogsButton.textContent = "Wipe All Logs";
+      }, 2000);
+    })
+    .catch((error) => {
+      console.error("Failed to wipe logs:", error);
+      wipeLogsButton.textContent = "Failed to Wipe Logs";
+      setTimeout(() => {
+        wipeLogsButton.textContent = "Wipe All Logs";
+      }, 2000);
+    });
 });
