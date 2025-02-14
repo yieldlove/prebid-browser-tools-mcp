@@ -1,14 +1,18 @@
-# Browser Context Provider (MCP Chrome Extension)
+# BrowserTools MCP
 
-## Overview
+> Make your AI tools 10x more aware and capable of interacting with your browser
 
-This application is a powerful browser monitoring and interaction tool that enables AI-powered applications to capture and analyze browser data through a Chrome extension. It consists of three main components working together in a layered architecture:
+This application is a powerful browser monitoring and interaction tool that enables AI-powered applications via Anthropic's Model Context Protocol (MCP) to capture and analyze browser data through a Chrome extension.
 
-1. **Chrome Extension**: A browser extension that captures console logs, network activity, and DOM elements.
-2. **Node Server**: An intermediary server that facilitates communication between the Chrome extension and the MCP server.
-3. **MCP Server**: A Model Context Protocol server that provides standardized tools for AI clients to interact with the browser.
+Read our [docs](https://docs.browserkit.dev/mcp-server) for the full installation, quickstart and contribution guides.
 
 ## Architecture
+
+There are three core components all used to capture and analyze browser data:
+
+1. **Chrome Extension**: A browser extension that captures screenshots, console logs, network activity and DOM elements.
+2. **Node Server**: An intermediary server that facilitates communication between the Chrome extension and any instance of an MCP server.
+3. **MCP Server**: A Model Context Protocol server that provides standardized tools for AI clients to interact with the browser.
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌───────────────┐     ┌─────────────┐
@@ -18,62 +22,43 @@ This application is a powerful browser monitoring and interaction tool that enab
 └─────────────┘     └──────────────┘     └───────────────┘     └─────────────┘
 ```
 
-### Component Details
+Model Context Protocol (MCP) is a capability supported by Anthropic AI models that
+allow you to create custom tools for any compatible client. MCP clients like Claude
+Desktop, Cursor, Cline or Zed can run an MCP server which "teaches" these clients
+about a new tool that they can use.
+
+These tools can call out to external APIs but in our case, **all logs are stored locally** on your machine and NEVER sent out to any third-party service or API. BrowserKit MCP runs a local instance of a NodeJS API server which communicates with the BrowserKit Chrome Extension.
+
+All consumers of the BrowserKit MCP Server interface with the same NodeJS API and Chrome extension.
 
 #### Chrome Extension
 
-- Captures browser console logs
-- Monitors network requests and responses
-- Captures screenshots
+- Monitors XHR requests/responses and console logs
 - Tracks selected DOM elements
-- Communicates with the Node server through DevTools protocol
+- Sends all logs and current element to the BrowserKit Connector
+- Connects to Websocket server to capture/send screenshots
+- Allows user to configure token/truncation limits + screenshot folder path
 
 #### Node Server
 
 - Acts as middleware between the Chrome extension and MCP server
-- Processes and routes requests
-- Manages data transformation and communication
+- Receives logs and currently selected element from Chrome extension
+- Processes requests from MCP server to capture logs, screenshot or current element
+- Sends Websocket command to the Chrome extension for capturing a screenshot
+- Intelligently truncates strings and # of duplicate objects in logs to avoid token limits
+- Removes cookies and sensitive headers to avoid sending to LLMs in MCP clients
 
 #### MCP Server
 
 - Implements the Model Context Protocol
 - Provides standardized tools for AI clients
-- Interfaces with Anthropic Cloud LLM inference endpoints
-- Compatible with various MCP clients (Cursor, etc.)
+- Compatible with various MCP clients (Cursor, Cline, Zed, Claude Desktop, etc.)
 
 ## Installation
 
-### 1. MCP Server Setup
+Installation steps can be found in our documentation:
 
-```bash
-cd mcp-server
-npm install
-npm start
-```
-
-### 2. Chrome Extension Setup
-
-1. Open your Chrome-based browser
-2. Navigate to `chrome://extensions/`
-3. Enable "Developer mode"
-4. Click "Load unpacked"
-5. Select the `chrome-extension` directory from this repository
-
-### 3. MCP Client Configuration
-
-Configure your MCP client with the following:
-
-1. Command base: `node`
-2. Server path: `[absolute_path_to_workspace]/mcp-server/dist/mcp-server.js`
-
-## Features
-
-- Console log capture
-- Network request/response monitoring
-- Screenshot capabilities
-- DOM element selection
-- Real-time browser state monitoring
-- AI-powered analysis through LLM integration
+- [BrwoserTools MCP Docs](https://docs.browserkit.dev/mcp-server)
 
 ## Usage
 
@@ -83,14 +68,10 @@ Once installed and configured, the system allows any compatible MCP client to:
 - Capture network traffic
 - Take screenshots
 - Analyze selected elements
-- Interface with AI models for enhanced functionality
+- Wipe logs stored in our MCP server
 
 ## Compatibility
 
 - Works with any MCP-compatible client
 - Primarily designed for Cursor IDE integration
 - Supports other AI editors and MCP clients
-
-## Development
-
-The application uses TypeScript for the server components and standard web technologies for the Chrome extension. Built files are generated in the `dist` directory upon running `npm start` in the MCP server.
