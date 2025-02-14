@@ -6,7 +6,6 @@
     "devtools_page": "devtools.html",
     "permissions": [
       "activeTab",
-      "scripting",
       "debugger",
       "storage",
       "tabs"
