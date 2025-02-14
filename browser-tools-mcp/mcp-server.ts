@@ -117,13 +117,14 @@ server.tool(
       const result = await response.json();
 
       if (response.ok) {
+        // const message = `Screenshot saved to: ${
+        //   result.path
+        // }\nFilename: ${path.basename(result.path)}`;
         return {
           content: [
             {
               type: "text",
-              text: `Screenshot saved to: ${
-                result.path
-              }\nFilename: ${path.basename(result.path)}`,
+              text: "Successfully saved screenshot",
             },
           ],
         };
@@ -188,6 +189,22 @@ server.tool("wipeLogs", "Wipe all browser logs from memory", async () => {
 
 // Start receiving messages on stdio
 (async () => {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  try {
+    const transport = new StdioServerTransport();
+
+    // Ensure stdout is only used for JSON messages
+    const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: any, encoding?: any, callback?: any) => {
+      // Only allow JSON messages to pass through
+      if (typeof chunk === "string" && !chunk.startsWith("{")) {
+        return true; // Silently skip non-JSON messages
+      }
+      return originalStdoutWrite(chunk, encoding, callback);
+    };
+
+    await server.connect(transport);
+  } catch (error) {
+    console.error("Failed to initialize MCP server:", error);
+    process.exit(1);
+  }
 })();
