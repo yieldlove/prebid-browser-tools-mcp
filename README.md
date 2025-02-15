@@ -58,7 +58,7 @@ All consumers of the BrowserKit MCP Server interface with the same NodeJS API an
 
 Installation steps can be found in our documentation:
 
-- [BrwoserTools MCP Docs](https://docs.browserkit.dev/mcp-server)
+- [BrwoserTools MCP Docs](https://browsertools.agentdesk.ai/)
 
 ## Usage
 
