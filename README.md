@@ -27,15 +27,15 @@ allow you to create custom tools for any compatible client. MCP clients like Cla
 Desktop, Cursor, Cline or Zed can run an MCP server which "teaches" these clients
 about a new tool that they can use.
 
-These tools can call out to external APIs but in our case, **all logs are stored locally** on your machine and NEVER sent out to any third-party service or API. BrowserKit MCP runs a local instance of a NodeJS API server which communicates with the BrowserKit Chrome Extension.
+These tools can call out to external APIs but in our case, **all logs are stored locally** on your machine and NEVER sent out to any third-party service or API. BrowserTools MCP runs a local instance of a NodeJS API server which communicates with the BrowserTools Chrome Extension.
 
-All consumers of the BrowserKit MCP Server interface with the same NodeJS API and Chrome extension.
+All consumers of the BrowserTools MCP Server interface with the same NodeJS API and Chrome extension.
 
 #### Chrome Extension
 
 - Monitors XHR requests/responses and console logs
 - Tracks selected DOM elements
-- Sends all logs and current element to the BrowserKit Connector
+- Sends all logs and current element to the BrowserTools Connector
 - Connects to Websocket server to capture/send screenshots
 - Allows user to configure token/truncation limits + screenshot folder path
 
