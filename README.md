@@ -58,7 +58,7 @@ All consumers of the BrowserTools MCP Server interface with the same NodeJS API 
 
 Installation steps can be found in our documentation:
 
-- [BrwoserTools MCP Docs](https://browsertools.agentdesk.ai/)
+- [BrowserTools MCP Docs](https://browsertools.agentdesk.ai/)
 
 ## Usage
 
