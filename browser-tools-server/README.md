@@ -10,6 +10,12 @@ A powerful browser tools server for capturing and managing browser events, logs,
 - Element selection tracking
 - WebSocket real-time communication
 - Configurable log limits and settings
+- Lighthouse-powered accessibility and performance audits
+
+## Prerequisites
+
+- Node.js 14 or higher
+- Chrome or Chromium browser installed (required for audit functionality)
 
 ## Installation
 
@@ -44,6 +50,8 @@ npx @agentdeskai/browser-tools-server
 - `/all-xhr` - Get all network requests
 - `/screenshot` - Capture screenshots
 - `/selected-element` - Get currently selected DOM element
+- `/accessibility-audit` - Run accessibility audit on current page
+- `/performance-audit` - Run performance audit on current page
 
 ## API Documentation
 
@@ -62,6 +70,32 @@ npx @agentdeskai/browser-tools-server
 - `POST /screenshot` - Capture and save screenshots
 - `POST /selected-element` - Update the selected element
 - `POST /wipelogs` - Clear all stored logs
+- `POST /accessibility-audit` - Run a WCAG-compliant accessibility audit on the current page
+- `POST /performance-audit` - Run a performance audit on the current page
+
+## Audit Functionality
+
+The server provides Lighthouse-powered audit capabilities for accessibility and performance testing:
+
+### Accessibility Audit
+
+Runs a WCAG-compliant accessibility audit on the current page. The audit checks for common accessibility issues such as:
+
+- Color contrast problems
+- Missing alt text on images
+- Keyboard navigation issues
+- ARIA attribute problems
+- Form label issues
+
+### Performance Audit
+
+Runs a performance audit on the current page to identify issues affecting load speed and responsiveness:
+
+- Render-blocking resources
+- Excessive DOM size
+- Unoptimized images
+- JavaScript execution time
+- First Contentful Paint (FCP) and other metrics
 
 ## License
 
