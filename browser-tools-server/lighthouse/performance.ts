@@ -7,7 +7,12 @@ import {
   ImpactLevel,
   AuditCategory,
 } from "./types.js";
-import { runLighthouseOnExistingTab } from "./index.js";
+import {
+  runLighthouseOnExistingTab,
+  mapAuditItemsToElements,
+  createAuditIssue,
+  createAuditMetadata,
+} from "./index.js";
 
 /**
  * Extracts performance issues from Lighthouse results
@@ -21,8 +26,6 @@ export function extractPerformanceIssues(
   limit: number = 5,
   detailed: boolean = false
 ): Partial<AuditResult> {
-  console.log("Processing performance audit results");
-
   const allIssues: AuditIssue[] = [];
   const categoryScores: { [key: string]: number } = {};
 
@@ -67,8 +70,6 @@ export function extractPerformanceIssues(
             ((item.audit.details as LighthouseDetails)?.items?.length || 0) > 0)
       );
 
-    console.log(`Found ${failedAudits.length} performance issues`);
-
     if (failedAudits.length > 0) {
       failedAudits.forEach(({ ref, audit }) => {
         try {
@@ -80,70 +81,28 @@ export function extractPerformanceIssues(
             return;
           }
 
-          // Extract actionable elements that need fixing
-          const elements = (details.items || []).map(
-            (item: Record<string, unknown>) => {
-              try {
-                return {
-                  selector:
-                    ((item.node as Record<string, unknown>)
-                      ?.selector as string) ||
-                    (item.selector as string) ||
-                    "Unknown selector",
-                  snippet:
-                    ((item.node as Record<string, unknown>)
-                      ?.snippet as string) ||
-                    (item.snippet as string) ||
-                    "No snippet available",
-                  explanation:
-                    ((item.node as Record<string, unknown>)
-                      ?.explanation as string) ||
-                    (item.explanation as string) ||
-                    "No explanation available",
-                  url:
-                    (item.url as string) ||
-                    ((item.node as Record<string, unknown>)?.url as string) ||
-                    "",
-                  size:
-                    (item.totalBytes as number) ||
-                    (item.transferSize as number) ||
-                    0,
-                  wastedMs: (item.wastedMs as number) || 0,
-                  wastedBytes: (item.wastedBytes as number) || 0,
-                } as ElementDetails;
-              } catch (error) {
-                console.error(`Error processing element: ${error}`);
-                return {
-                  selector: "Error processing element",
-                  snippet: "Error",
-                  explanation: "Error processing element details",
-                  url: "",
-                  size: 0,
-                  wastedMs: 0,
-                  wastedBytes: 0,
-                } as ElementDetails;
-              }
-            }
+          // Use the shared helper function to extract elements
+          const elements = mapAuditItemsToElements(
+            details.items || [],
+            detailed
           );
 
           if (elements.length > 0 || (audit.score || 0) < 0.9) {
-            const issue: AuditIssue = {
-              id: audit.id,
-              title: audit.title,
-              description: audit.description,
-              score: audit.score || 0,
-              details: detailed ? details : { type: details.type || "unknown" },
-              category: categoryName,
-              wcagReference: ref.relevantAudits || [],
-              impact: getPerformanceImpact(audit.score || 0),
-              elements: detailed ? elements : elements.slice(0, 3),
-              failureSummary:
-                ((details?.items?.[0] as Record<string, unknown>)
-                  ?.failureSummary as string) ||
-                audit.explanation ||
-                "No failure summary available",
-              recommendations: [],
-            };
+            // Use the shared helper function to create an audit issue
+            const impact = getPerformanceImpact(audit.score || 0);
+            const issue = createAuditIssue(
+              audit,
+              ref,
+              details,
+              elements,
+              categoryName,
+              impact
+            );
+
+            // Add detailed details if requested
+            if (detailed) {
+              issue.details = details;
+            }
 
             allIssues.push(issue);
           }
@@ -160,26 +119,12 @@ export function extractPerformanceIssues(
   // Return only the specified number of issues
   const limitedIssues = allIssues.slice(0, limit);
 
-  console.log(`Returning ${limitedIssues.length} performance issues`);
-
   return {
     score: categoryScores.performance || 0,
     categoryScores,
     issues: limitedIssues,
     ...(detailed && {
-      auditMetadata: {
-        fetchTime: lhr.fetchTime || new Date().toISOString(),
-        url: lhr.finalUrl || "Unknown URL",
-        deviceEmulation: "desktop",
-        categories: Object.keys(lhr.categories),
-        totalAudits: Object.keys(lhr.audits || {}).length,
-        passedAudits: Object.values(lhr.audits || {}).filter(
-          (audit) => audit.score === 1
-        ).length,
-        failedAudits: Object.values(lhr.audits || {}).filter(
-          (audit) => audit.score !== null && audit.score < 1
-        ).length,
-      },
+      auditMetadata: createAuditMetadata(lhr),
     }),
   };
 }

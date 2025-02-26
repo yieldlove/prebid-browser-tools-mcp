@@ -2,8 +2,6 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import path from "path";
-import { z } from "zod";
 // import { z } from "zod";
 // import fs from "fs";
 
@@ -13,14 +11,14 @@ const server = new McpServer({
   version: "1.0.9",
 });
 
-// Define audit categories as constants to avoid importing from the types file
-const AUDIT_CATEGORIES = {
-  ACCESSIBILITY: "accessibility",
-  PERFORMANCE: "performance",
-  SEO: "seo",
-  BEST_PRACTICES: "best-practices",
-  PWA: "pwa",
-};
+// Define audit categories as enum to match the server's AuditCategory enum
+enum AuditCategory {
+  ACCESSIBILITY = "accessibility",
+  PERFORMANCE = "performance",
+  SEO = "seo",
+  BEST_PRACTICES = "best-practices",
+  PWA = "pwa",
+}
 
 // Function to get the port from the .port file
 // function getPort(): number {
@@ -197,7 +195,7 @@ server.tool("wipeLogs", "Wipe all browser logs from memory", async () => {
   };
 });
 
-// Add tool for accessibility audits
+// Add tool for accessibility audits, launches a headless browser instance
 server.tool(
   "runAccessibilityAudit",
   "Run a WCAG-compliant accessibility audit on the current page",
@@ -210,7 +208,7 @@ server.tool(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            category: AUDIT_CATEGORIES.ACCESSIBILITY,
+            category: AuditCategory.ACCESSIBILITY,
           }),
         }
       );
@@ -248,7 +246,7 @@ server.tool(
   }
 );
 
-// Add tool for performance audits
+// Add tool for performance audits, launches a headless browser instance
 server.tool(
   "runPerformanceAudit",
   "Run a performance audit on the current page",
@@ -262,7 +260,7 @@ server.tool(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            category: AUDIT_CATEGORIES.PERFORMANCE,
+            category: AuditCategory.PERFORMANCE,
           }),
         }
       );

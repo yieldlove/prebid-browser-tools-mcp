@@ -3,11 +3,15 @@ import {
   AuditResult,
   AuditIssue,
   LighthouseDetails,
-  ElementDetails,
   ImpactLevel,
   AuditCategory,
 } from "./types.js";
-import { runLighthouseOnExistingTab } from "./index.js";
+import {
+  runLighthouseOnExistingTab,
+  mapAuditItemsToElements,
+  createAuditIssue,
+  createAuditMetadata,
+} from "./index.js";
 
 /**
  * Extracts simplified accessibility issues from Lighthouse results
@@ -44,56 +48,30 @@ export function extractAccessibilityIssues(
       failedAudits.forEach(({ ref, audit }) => {
         const details = audit.details as LighthouseDetails;
 
-        // Extract actionable elements that need fixing
-        const elements = (details?.items || []).map(
-          (item: Record<string, unknown>) =>
-            ({
-              selector:
-                ((item.node as Record<string, unknown>)?.selector as string) ||
-                (item.selector as string) ||
-                "Unknown selector",
-              snippet:
-                ((item.node as Record<string, unknown>)?.snippet as string) ||
-                (item.snippet as string) ||
-                "No snippet available",
-              explanation:
-                ((item.node as Record<string, unknown>)
-                  ?.explanation as string) ||
-                (item.explanation as string) ||
-                "No explanation available",
-              url:
-                (item.url as string) ||
-                ((item.node as Record<string, unknown>)?.url as string) ||
-                "",
-              size:
-                (item.totalBytes as number) ||
-                (item.transferSize as number) ||
-                0,
-              wastedMs: (item.wastedMs as number) || 0,
-              wastedBytes: (item.wastedBytes as number) || 0,
-            } as ElementDetails)
+        // Use the shared helper function to extract elements
+        const elements = mapAuditItemsToElements(
+          details?.items || [],
+          detailed
         );
 
         if (elements.length > 0 || (audit.score || 0) < 1) {
-          const issue: AuditIssue = {
-            id: audit.id,
-            title: audit.title,
-            description: audit.description,
-            score: audit.score || 0,
-            details: detailed ? details : { type: details.type },
-            category: categoryName,
-            wcagReference: ref.relevantAudits || [],
-            impact:
-              ((details?.items?.[0] as Record<string, unknown>)
-                ?.impact as string) || ImpactLevel.MODERATE,
-            elements: detailed ? elements : elements.slice(0, 3),
-            failureSummary:
-              ((details?.items?.[0] as Record<string, unknown>)
-                ?.failureSummary as string) ||
-              audit.explanation ||
-              "No failure summary available",
-            recommendations: [],
-          };
+          // Use the shared helper function to create an audit issue
+          const impact =
+            ((details?.items?.[0] as Record<string, unknown>)
+              ?.impact as string) || ImpactLevel.MODERATE;
+          const issue = createAuditIssue(
+            audit,
+            ref,
+            details,
+            elements,
+            categoryName,
+            impact
+          );
+
+          // Add detailed details if requested
+          if (detailed) {
+            issue.details = details;
+          }
 
           allIssues.push(issue);
         }
@@ -124,19 +102,7 @@ export function extractAccessibilityIssues(
     categoryScores,
     issues: limitedIssues,
     ...(detailed && {
-      auditMetadata: {
-        fetchTime: lhr.fetchTime || new Date().toISOString(),
-        url: lhr.finalUrl || "Unknown URL",
-        deviceEmulation: "desktop",
-        categories: Object.keys(lhr.categories),
-        totalAudits: Object.keys(lhr.audits).length,
-        passedAudits: Object.values(lhr.audits).filter(
-          (audit) => audit.score === 1
-        ).length,
-        failedAudits: Object.values(lhr.audits).filter(
-          (audit) => audit.score !== null && audit.score < 1
-        ).length,
-      },
+      auditMetadata: createAuditMetadata(lhr),
     }),
   };
 }
