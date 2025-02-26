@@ -4,12 +4,14 @@ import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
 import { tokenizeAndEstimateCost } from "llm-cost";
-import WebSocket from "ws";
+import { WebSocketServer, WebSocket } from "ws";
 import fs from "fs";
 import path from "path";
 import { IncomingMessage } from "http";
 import { Socket } from "net";
 import os from "os";
+import { runPerformanceAudit } from "./lighthouse/performance.js";
+import { runAccessibilityAudit } from "./lighthouse/accessibility.js";
 
 // Function to get default downloads folder
 function getDefaultDownloadsFolder(): string {
@@ -25,6 +27,9 @@ const consoleErrors: any[] = [];
 const networkErrors: any[] = [];
 const networkSuccess: any[] = [];
 const allXhr: any[] = [];
+
+// Store the current URL from the extension
+let currentUrl: string = "";
 
 // Add settings state
 let currentSettings = {
@@ -178,6 +183,14 @@ app.post("/extension-log", (req, res) => {
   console.log(`Processing ${data.type} log entry`);
 
   switch (data.type) {
+    case "page-navigated":
+      // Handle page navigation event via HTTP POST
+      // Note: This is also handled in the WebSocket message handler
+      // as the extension may send navigation events through either channel
+      console.log("Received page navigation event with URL:", data.url);
+      currentUrl = data.url;
+      console.log("Updated current URL:", currentUrl);
+      break;
     case "console-log":
       console.log("Adding console log:", {
         level: data.level,
@@ -324,6 +337,26 @@ app.post("/wipelogs", (req, res) => {
   res.json({ status: "ok", message: "All logs cleared successfully" });
 });
 
+// Add endpoint for the extension to report the current URL
+app.post("/current-url", (req, res) => {
+  console.log("Received current URL update:", req.body);
+
+  if (req.body && req.body.url) {
+    currentUrl = req.body.url;
+    console.log("Updated current URL via dedicated endpoint:", currentUrl);
+    res.json({ status: "ok", url: currentUrl });
+  } else {
+    console.log("No URL provided in current-url request");
+    res.status(400).json({ status: "error", message: "No URL provided" });
+  }
+});
+
+// Add endpoint to get the current URL
+app.get("/current-url", (req, res) => {
+  console.log("Current URL requested, returning:", currentUrl);
+  res.json({ url: currentUrl });
+});
+
 interface ScreenshotMessage {
   type: "screenshot-data" | "screenshot-error";
   data?: string;
@@ -332,17 +365,18 @@ interface ScreenshotMessage {
 }
 
 export class BrowserConnector {
-  private wss: WebSocket.Server;
+  private wss: WebSocketServer;
   private activeConnection: WebSocket | null = null;
   private app: express.Application;
   private server: any;
+  private urlRequestCallbacks: Map<string, (url: string) => void> = new Map();
 
   constructor(app: express.Application, server: any) {
     this.app = app;
     this.server = server;
 
     // Initialize WebSocket server using the existing HTTP server
-    this.wss = new WebSocket.Server({
+    this.wss = new WebSocketServer({
       noServer: true,
       path: "/extension-ws",
     });
@@ -363,19 +397,25 @@ export class BrowserConnector {
       }
     );
 
+    // Set up accessibility audit endpoint
+    this.setupAccessibilityAudit();
+
+    // Set up performance audit endpoint
+    this.setupPerformanceAudit();
+
     // Handle upgrade requests for WebSocket
     this.server.on(
       "upgrade",
       (request: IncomingMessage, socket: Socket, head: Buffer) => {
         if (request.url === "/extension-ws") {
-          this.wss.handleUpgrade(request, socket, head, (ws) => {
+          this.wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
             this.wss.emit("connection", ws, request);
           });
         }
       }
     );
 
-    this.wss.on("connection", (ws) => {
+    this.wss.on("connection", (ws: WebSocket) => {
       console.log("Chrome extension connected via WebSocket");
       this.activeConnection = ws;
 
@@ -388,6 +428,28 @@ export class BrowserConnector {
             data: data.data ? "[base64 data]" : undefined,
           });
 
+          // Handle URL response
+          if (data.type === "current-url-response" && data.url) {
+            console.log("Received current URL from browser:", data.url);
+            currentUrl = data.url;
+
+            // Call the callback if exists
+            if (
+              data.requestId &&
+              this.urlRequestCallbacks.has(data.requestId)
+            ) {
+              const callback = this.urlRequestCallbacks.get(data.requestId);
+              if (callback) callback(data.url);
+              this.urlRequestCallbacks.delete(data.requestId);
+            }
+          }
+          // Handle page navigation event via WebSocket
+          // Note: This is intentionally duplicated from the HTTP handler in /extension-log
+          // as the extension may send navigation events through either channel
+          if (data.type === "page-navigated" && data.url) {
+            console.log("Page navigated to:", data.url);
+            currentUrl = data.url;
+          }
           // Handle screenshot response
           if (data.type === "screenshot-data" && data.data) {
             console.log("Received screenshot data");
@@ -562,6 +624,66 @@ export class BrowserConnector {
     }
   }
 
+  // Method to request the current URL from the browser
+  private async requestCurrentUrl(): Promise<string | null> {
+    if (this.activeConnection) {
+      console.log("Requesting current URL from browser via WebSocket...");
+      try {
+        const requestId = Date.now().toString();
+
+        // Create a promise that will resolve when we get the URL
+        const urlPromise = new Promise<string>((resolve, reject) => {
+          // Store callback in map
+          this.urlRequestCallbacks.set(requestId, resolve);
+
+          // Set a timeout to reject the promise if we don't get a response
+          setTimeout(() => {
+            if (this.urlRequestCallbacks.has(requestId)) {
+              console.log("URL request timed out");
+              this.urlRequestCallbacks.delete(requestId);
+              reject(new Error("URL request timed out"));
+            }
+          }, 5000);
+        });
+
+        // Send the request to the browser
+        this.activeConnection.send(
+          JSON.stringify({
+            type: "get-current-url",
+            requestId,
+          })
+        );
+
+        // Wait for the response
+        const url = await urlPromise;
+        return url;
+      } catch (error) {
+        console.error("Error requesting URL from browser:", error);
+        // Fall back to stored URL if available
+        if (currentUrl) {
+          console.log("Falling back to stored URL:", currentUrl);
+          return currentUrl;
+        }
+        return null;
+      }
+    } else if (currentUrl) {
+      // If no active connection but we have a stored URL, use it as fallback
+      console.log(
+        "No active connection, using stored URL as fallback:",
+        currentUrl
+      );
+      return currentUrl;
+    }
+
+    console.log("No active connection and no stored URL");
+    return null;
+  }
+
+  // Public method to check if there's an active connection
+  public hasActiveConnection(): boolean {
+    return this.activeConnection !== null;
+  }
+
   // Add new endpoint for programmatic screenshot capture
   async captureScreenshot(req: express.Request, res: express.Response) {
     console.log("Browser Connector: Starting captureScreenshot method");
@@ -666,6 +788,199 @@ export class BrowserConnector {
         error: errorMessage,
       });
     }
+  }
+
+  // Add a helper method to get the URL for audits
+  private async getUrlForAudit(): Promise<string | null> {
+    // Wait for WebSocket connection if not already connected
+    if (!this.activeConnection) {
+      console.log("No active WebSocket connection, waiting for connection...");
+      try {
+        await this.waitForConnection(15000); // Wait up to 15 seconds for connection
+        console.log("WebSocket connection established");
+      } catch (error) {
+        console.error("Timed out waiting for WebSocket connection");
+      }
+    }
+    console.log("Attempting to get current URL from browser extension");
+    const browserUrl = await this.requestCurrentUrl();
+    if (browserUrl) {
+      try {
+        // Validate URL format
+        new URL(browserUrl);
+        return browserUrl;
+      } catch (e) {
+        console.error(`Invalid URL format from browser: ${browserUrl}`);
+        // Continue to next option
+      }
+    }
+
+    // Fallback: Use stored URL
+    if (currentUrl) {
+      try {
+        // Validate URL format
+        new URL(currentUrl);
+        console.log(`Using stored URL as fallback: ${currentUrl}`);
+        return currentUrl;
+      } catch (e) {
+        console.error(`Invalid stored URL format: ${currentUrl}`);
+        // Continue to next option
+      }
+    }
+
+    // Default fallback
+    console.error("No valid URL available for audit, using about:blank");
+    return "about:blank";
+  }
+
+  // Method to wait for WebSocket connection, we need this to ensure the browser extension
+  // is connected before we try to get the current URL
+  private waitForConnection(timeout: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // If already connected, resolve immediately
+      if (this.activeConnection) {
+        resolve();
+        return;
+      }
+
+      // Set up a listener for connection
+      const connectionListener = (ws: WebSocket) => {
+        this.wss.off("connection", connectionListener);
+        resolve();
+      };
+
+      // Listen for connection event
+      this.wss.on("connection", connectionListener);
+
+      // Set timeout
+      const timeoutId = setTimeout(() => {
+        this.wss.off("connection", connectionListener);
+        reject(new Error("Connection timeout"));
+      }, timeout);
+    });
+  }
+
+  // Sets up the accessibility audit endpoint
+  private setupAccessibilityAudit() {
+    this.app.post("/accessibility-audit", async (req: any, res: any) => {
+      try {
+        console.log("Accessibility audit request received");
+
+        const limit = req.body?.limit || 5;
+        const detailed = req.body?.detailed || false;
+
+        // Get URL using our helper method
+        const url = await this.getUrlForAudit();
+
+        if (!url) {
+          console.log("No URL available for accessibility audit");
+          return res.status(400).json({
+            error:
+              "URL is required for accessibility audit. Either provide a URL in the request body or navigate to a page in the browser first.",
+          });
+        }
+
+        // Check if we're using the default URL
+        if (url === "about:blank") {
+          console.log("Cannot run accessibility audit on about:blank");
+          return res.status(400).json({
+            error:
+              "Cannot run accessibility audit on about:blank. Please provide a valid URL or navigate to a page in the browser first.",
+          });
+        }
+
+        // Run the audit using the imported function
+        try {
+          const processedResults = await runAccessibilityAudit(
+            url,
+            limit,
+            detailed
+          );
+
+          console.log("Accessibility audit completed successfully");
+          // Return the results
+          res.json(processedResults);
+        } catch (auditError) {
+          console.error("Accessibility audit failed:", auditError);
+          const errorMessage =
+            auditError instanceof Error
+              ? auditError.message
+              : String(auditError);
+          res.status(500).json({
+            error: `Failed to run accessibility audit: ${errorMessage}`,
+          });
+        }
+      } catch (error) {
+        console.error("Error in accessibility audit endpoint:", error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        res.status(500).json({
+          error: `Error in accessibility audit endpoint: ${errorMessage}`,
+        });
+      }
+    });
+  }
+
+  // Sets up the performance audit endpoint
+  private setupPerformanceAudit() {
+    this.app.post("/performance-audit", async (req: any, res: any) => {
+      try {
+        console.log("Performance audit request received");
+
+        const limit = req.body?.limit || 5;
+        const detailed = req.body?.detailed || false;
+
+        console.log("Performance audit request body:", req.body);
+        // Get URL using our helper method
+        const url = await this.getUrlForAudit();
+
+        if (!url) {
+          console.log("No URL available for performance audit");
+          return res.status(400).json({
+            error:
+              "URL is required for performance audit. Either provide a URL in the request body or navigate to a page in the browser first.",
+          });
+        }
+
+        // Check if we're using the default URL
+        if (url === "about:blank") {
+          console.log("Cannot run performance audit on about:blank");
+          return res.status(400).json({
+            error:
+              "Cannot run performance audit on about:blank. Please provide a valid URL or navigate to a page in the browser first.",
+          });
+        }
+
+        // Run the audit using the imported function
+        try {
+          const processedResults = await runPerformanceAudit(
+            url,
+            limit,
+            detailed
+          );
+
+          console.log("Performance audit completed successfully");
+          // Return the results
+          res.json(processedResults);
+        } catch (auditError) {
+          console.error("Performance audit failed:", auditError);
+          const errorMessage =
+            auditError instanceof Error
+              ? auditError.message
+              : String(auditError);
+          res.status(500).json({
+            error: `Failed to run performance audit: ${errorMessage}`,
+          });
+        }
+      } catch (error) {
+        console.error("Error in performance audit endpoint:", error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        res.status(500).json({
+          error: `Error in performance audit endpoint: ${errorMessage}`,
+        });
+      }
+    });
   }
 }
 

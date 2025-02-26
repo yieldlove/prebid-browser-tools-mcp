@@ -313,9 +313,24 @@ function wipeLogs() {
 }
 
 // Listen for page refreshes
-chrome.devtools.network.onNavigated.addListener(() => {
+chrome.devtools.network.onNavigated.addListener((url) => {
   console.log("Page navigated/refreshed - wiping logs");
   wipeLogs();
+
+  // Send the new URL to the server
+  if (ws && ws.readyState === WebSocket.OPEN && url) {
+    console.log(
+      "Chrome Extension: Sending page-navigated event with URL:",
+      url
+    );
+    ws.send(
+      JSON.stringify({
+        type: "page-navigated",
+        url: url,
+        timestamp: Date.now(),
+      })
+    );
+  }
 });
 
 // 1) Listen for network requests
@@ -567,6 +582,38 @@ function setupWebSocket() {
 
           ws.send(JSON.stringify(response));
         });
+      } else if (message.type === "get-current-url") {
+        console.log("Chrome Extension: Received request for current URL");
+        // Get the current URL from the inspected window
+        chrome.devtools.inspectedWindow.eval(
+          "window.location.href",
+          (result, isException) => {
+            if (isException) {
+              console.error(
+                "Chrome Extension: Error getting URL:",
+                isException
+              );
+              ws.send(
+                JSON.stringify({
+                  type: "current-url-response",
+                  url: null,
+                  error: "Failed to get URL",
+                  requestId: message.requestId,
+                })
+              );
+              return;
+            }
+
+            console.log("Chrome Extension: Current URL:", result);
+            ws.send(
+              JSON.stringify({
+                type: "current-url-response",
+                url: result,
+                requestId: message.requestId,
+              })
+            );
+          }
+        );
       }
     } catch (error) {
       console.error(

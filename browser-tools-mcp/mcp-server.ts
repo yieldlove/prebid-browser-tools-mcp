@@ -3,6 +3,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import path from "path";
+import { z } from "zod";
 // import { z } from "zod";
 // import fs from "fs";
 
@@ -11,6 +12,15 @@ const server = new McpServer({
   name: "Browsert Tools MCP",
   version: "1.0.9",
 });
+
+// Define audit categories as constants to avoid importing from the types file
+const AUDIT_CATEGORIES = {
+  ACCESSIBILITY: "accessibility",
+  PERFORMANCE: "performance",
+  SEO: "seo",
+  BEST_PRACTICES: "best-practices",
+  PWA: "pwa",
+};
 
 // Function to get the port from the .port file
 // function getPort(): number {
@@ -186,6 +196,109 @@ server.tool("wipeLogs", "Wipe all browser logs from memory", async () => {
     ],
   };
 });
+
+// Add tool for accessibility audits
+server.tool(
+  "runAccessibilityAudit",
+  "Run a WCAG-compliant accessibility audit on the current page",
+  {},
+  async () => {
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${PORT}/accessibility-audit`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            category: AUDIT_CATEGORIES.ACCESSIBILITY,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `HTTP error! status: ${response.status}, body: ${errorText}`
+        );
+      }
+
+      const json = await response.json();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(json, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error("Error in accessibility audit:", errorMessage);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Failed to run accessibility audit: ${errorMessage}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Add tool for performance audits
+server.tool(
+  "runPerformanceAudit",
+  "Run a performance audit on the current page",
+  {},
+
+  async () => {
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${PORT}/performance-audit`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            category: AUDIT_CATEGORIES.PERFORMANCE,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `HTTP error! status: ${response.status}, body: ${errorText}`
+        );
+      }
+
+      const json = await response.json();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(json, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error("Error in performance audit:", errorMessage);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Failed to run performance audit: ${errorMessage}`,
+          },
+        ],
+      };
+    }
+  }
+);
 
 // Start receiving messages on stdio
 (async () => {
