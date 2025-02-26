@@ -298,6 +298,54 @@ server.tool(
   }
 );
 
+// Add tool for SEO audits, launches a headless browser instance
+server.tool(
+  "runSEOAudit",
+  "Run an SEO audit on the current page",
+  {},
+  async () => {
+    try {
+      const response = await fetch(`http://127.0.0.1:${PORT}/seo-audit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: AuditCategory.SEO,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `HTTP error! status: ${response.status}, body: ${errorText}`
+        );
+      }
+
+      const json = await response.json();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(json, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error("Error in SEO audit:", errorMessage);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Failed to run SEO audit: ${errorMessage}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Start receiving messages on stdio
 (async () => {
   try {

@@ -151,6 +151,7 @@ export async function runLighthouseOnExistingTab(
 // Export from specific audit modules
 export * from "./accessibility.js";
 export * from "./performance.js";
+export * from "./seo.js";
 export * from "./types.js";
 
 /**

@@ -10,8 +10,11 @@ import path from "path";
 import { IncomingMessage } from "http";
 import { Socket } from "net";
 import os from "os";
-import { runPerformanceAudit } from "./lighthouse/performance.js";
-import { runAccessibilityAudit } from "./lighthouse/accessibility.js";
+import {
+  runPerformanceAudit,
+  runAccessibilityAudit,
+  runSEOAudit,
+} from "./lighthouse/index.js";
 
 // Function to get default downloads folder
 function getDefaultDownloadsFolder(): string {
@@ -402,6 +405,9 @@ export class BrowserConnector {
 
     // Set up performance audit endpoint
     this.setupPerformanceAudit();
+
+    // Set up SEO audit endpoint
+    this.setupSEOAudit();
 
     // Handle upgrade requests for WebSocket
     this.server.on(
@@ -876,7 +882,7 @@ export class BrowserConnector {
           console.log("No URL available for accessibility audit");
           return res.status(400).json({
             error:
-              "URL is required for accessibility audit. Either provide a URL in the request body or navigate to a page in the browser first.",
+              "URL is required for accessibility audit. Make sure you navigate to a page in the browser first, and the browser-tool extension tab is open.",
           });
         }
 
@@ -884,8 +890,7 @@ export class BrowserConnector {
         if (url === "about:blank") {
           console.log("Cannot run accessibility audit on about:blank");
           return res.status(400).json({
-            error:
-              "Cannot run accessibility audit on about:blank. Please provide a valid URL or navigate to a page in the browser first.",
+            error: "Cannot run accessibility audit on about:blank",
           });
         }
 
@@ -938,7 +943,7 @@ export class BrowserConnector {
           console.log("No URL available for performance audit");
           return res.status(400).json({
             error:
-              "URL is required for performance audit. Either provide a URL in the request body or navigate to a page in the browser first.",
+              "URL is required for performance audit. Make sure you navigate to a page in the browser first, and the browser-tool extension tab is open.",
           });
         }
 
@@ -946,8 +951,7 @@ export class BrowserConnector {
         if (url === "about:blank") {
           console.log("Cannot run performance audit on about:blank");
           return res.status(400).json({
-            error:
-              "Cannot run performance audit on about:blank. Please provide a valid URL or navigate to a page in the browser first.",
+            error: "Cannot run performance audit on about:blank",
           });
         }
 
@@ -978,6 +982,62 @@ export class BrowserConnector {
           error instanceof Error ? error.message : String(error);
         res.status(500).json({
           error: `Error in performance audit endpoint: ${errorMessage}`,
+        });
+      }
+    });
+  }
+
+  // Set up SEO audit endpoint
+  private setupSEOAudit() {
+    this.app.post("/seo-audit", async (req: any, res: any) => {
+      try {
+        console.log("SEO audit request received");
+
+        const limit = req.body?.limit || 5;
+        const detailed = req.body?.detailed || false;
+
+        // Get URL using our helper method
+        const url = await this.getUrlForAudit();
+
+        if (!url) {
+          console.log("No URL available for SEO audit");
+          return res.status(400).json({
+            error:
+              "URL is required for SEO audit. Make sure you navigate to a page in the browser first, and the browser-tool extension tab is open.",
+          });
+        }
+
+        // Check if we're using the default URL
+        if (url === "about:blank") {
+          console.log("Cannot run SEO audit on about:blank");
+          return res.status(400).json({
+            error: "Cannot run SEO audit on about:blank",
+          });
+        }
+
+        // Run the audit using the imported function
+        try {
+          const processedResults = await runSEOAudit(url, limit, detailed);
+
+          console.log("SEO audit completed successfully");
+          // Return the results
+          res.json(processedResults);
+        } catch (auditError) {
+          console.error("SEO audit failed:", auditError);
+          const errorMessage =
+            auditError instanceof Error
+              ? auditError.message
+              : String(auditError);
+          res.status(500).json({
+            error: `Failed to run SEO audit: ${errorMessage}`,
+          });
+        }
+      } catch (error) {
+        console.error("Error in SEO audit endpoint:", error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        res.status(500).json({
+          error: `Error in SEO audit endpoint: ${errorMessage}`,
         });
       }
     });
