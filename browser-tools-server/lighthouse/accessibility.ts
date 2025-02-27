@@ -59,8 +59,6 @@ const extractLhrResult = (
   url: string
 ): LighthouseReport => {
   const categoryData = lhr.categories[AuditCategory.ACCESSIBILITY];
-  console.log(categoryData);
-  console.log(lhr);
 
   const metadata = {
     url,

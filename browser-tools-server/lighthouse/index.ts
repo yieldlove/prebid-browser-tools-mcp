@@ -48,7 +48,7 @@ export function createLighthouseConfig(
  */
 export async function runLighthouseAudit(
   url: string,
-  categories: string[] = [AuditCategory.ACCESSIBILITY]
+  categories: string[]
 ): Promise<LighthouseResult> {
   console.log(`Starting Lighthouse ${categories.join(", ")} audit for: ${url}`);
 
@@ -83,7 +83,7 @@ export async function runLighthouseAudit(
         `Running Lighthouse with categories: ${categories.join(", ")}`
       );
       const runnerResult = await lighthouse(url, flags as Flags, config);
-      console.log("Lighthouse audit completed");
+      console.log("Lighthouse scan completed");
 
       if (!runnerResult?.lhr) {
         console.error("Lighthouse audit failed to produce results");
@@ -95,6 +95,7 @@ export async function runLighthouseAudit(
 
       // Return the result
       const result = runnerResult.lhr;
+
       return result;
     } catch (browserError) {
       // Check if the error is related to Chrome/Edge not being available

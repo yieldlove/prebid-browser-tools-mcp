@@ -15,6 +15,7 @@ import {
   runAccessibilityAudit,
   runSEOAudit,
   AuditCategory,
+  LighthouseReport,
 } from "./lighthouse/index.js";
 
 // Function to get default downloads folder
@@ -899,14 +900,11 @@ export class BrowserConnector {
   private setupAuditEndpoint(
     auditType: string,
     endpoint: string,
-    auditFunction: (url: string) => Promise<any>
+    auditFunction: (url: string) => Promise<LighthouseReport>
   ) {
     this.app.post(endpoint, async (req: any, res: any) => {
       try {
         console.log(`${auditType} audit request received`);
-
-        const limit = req.body?.limit || 5;
-        const detailed = req.body?.detailed || false;
 
         // Get URL using our helper method
         const url = await this.getUrlForAudit();
@@ -928,11 +926,11 @@ export class BrowserConnector {
 
         // Run the audit using the provided function
         try {
-          const processedResults = await auditFunction(url);
+          const result = await auditFunction(url);
 
           console.log(`${auditType} audit completed successfully`);
           // Return the results
-          res.json(processedResults);
+          res.json(result);
         } catch (auditError) {
           console.error(`${auditType} audit failed:`, auditError);
           const errorMessage =
