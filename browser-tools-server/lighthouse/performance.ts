@@ -1,168 +1,38 @@
-import type { Result as LighthouseResult } from "lighthouse";
-import {
-  AuditResult,
-  AuditIssue,
-  LighthouseDetails,
-  ElementDetails,
-  ImpactLevel,
-  AuditCategory,
-} from "./types.js";
-import {
-  runLighthouseOnExistingTab,
-  mapAuditItemsToElements,
-  createAuditIssue,
-  createAuditMetadata,
-} from "./index.js";
+import { Result as LighthouseResult } from "lighthouse";
+import { AuditCategory, LighthouseReport } from "./types.js";
+import { runLighthouseAudit } from "./index.js";
 
-/**
- * Extracts performance issues from Lighthouse results
- * @param lhr The Lighthouse result object
- * @param limit Maximum number of issues to return
- * @param detailed Whether to include detailed information about each issue
- * @returns Processed audit result with performance issues
- */
-export function extractPerformanceIssues(
-  lhr: LighthouseResult,
-  limit: number = 5,
-  detailed: boolean = false
-): Partial<AuditResult> {
-  const allIssues: AuditIssue[] = [];
-  const categoryScores: { [key: string]: number } = {};
-
-  // Check if lhr and categories exist
-  if (!lhr || !lhr.categories) {
-    console.error("Invalid Lighthouse result: missing categories");
-    return {
-      score: 0,
-      categoryScores: {},
-      issues: [],
-    };
-  }
-
-  // Process performance category
-  Object.entries(lhr.categories).forEach(([categoryName, category]) => {
-    if (categoryName !== AuditCategory.PERFORMANCE) return;
-
-    const score = (category.score || 0) * 100;
-    categoryScores[categoryName] = score;
-
-    // Check if auditRefs exists
-    if (!category.auditRefs) {
-      console.error(`No auditRefs found for category: ${categoryName}`);
-      return;
-    }
-
-    // Only process audits that actually failed or have warnings
-    const failedAudits = category.auditRefs
-      .map((ref) => {
-        const audit = lhr.audits?.[ref.id];
-        if (!audit) {
-          console.error(`Audit not found for ref.id: ${ref.id}`);
-          return null;
-        }
-        return { ref, audit };
-      })
-      .filter(
-        (item): item is { ref: any; audit: any } =>
-          item !== null &&
-          item.audit?.score !== null &&
-          (item.audit.score < 0.9 ||
-            ((item.audit.details as LighthouseDetails)?.items?.length || 0) > 0)
-      );
-
-    if (failedAudits.length > 0) {
-      failedAudits.forEach(({ ref, audit }) => {
-        try {
-          const details = audit.details as LighthouseDetails;
-
-          // Check if details exists
-          if (!details) {
-            console.error(`No details found for audit: ${audit.id}`);
-            return;
-          }
-
-          // Use the shared helper function to extract elements
-          const elements = mapAuditItemsToElements(
-            details.items || [],
-            detailed
-          );
-
-          if (elements.length > 0 || (audit.score || 0) < 0.9) {
-            // Use the shared helper function to create an audit issue
-            const impact = getPerformanceImpact(audit.score || 0);
-            const issue = createAuditIssue(
-              audit,
-              ref,
-              details,
-              elements,
-              categoryName,
-              impact
-            );
-
-            // Add detailed details if requested
-            if (detailed) {
-              issue.details = details;
-            }
-
-            allIssues.push(issue);
-          }
-        } catch (error) {
-          console.error(`Error processing audit ${audit.id}: ${error}`);
-        }
-      });
-    }
-  });
-
-  // Sort issues by score (lowest first)
-  allIssues.sort((a, b) => a.score - b.score);
-
-  // Return only the specified number of issues
-  const limitedIssues = allIssues.slice(0, limit);
-
-  return {
-    score: categoryScores.performance || 0,
-    categoryScores,
-    issues: limitedIssues,
-    ...(detailed && {
-      auditMetadata: createAuditMetadata(lhr),
-    }),
-  };
+interface PerformanceAudit {
+  id: string; // e.g., "first-contentful-paint"
+  title: string; // e.g., "First Contentful Paint"
+  description: string; // e.g., "Time to first contentful paint..."
+  score: number | null; // 0-1 or null
+  scoreDisplayMode: string; // e.g., "numeric"
+  numericValue?: number; // e.g., 1.8 (seconds) or 200 (ms)
+  numericUnit?: string; // e.g., "s" or "ms"
+  details?: PerformanceAuditDetails; // Optional, structured details
+  weight?: number; // For prioritization
 }
 
-/**
- * Determines the impact level based on the performance score
- * @param score The performance score (0-1)
- * @returns Impact level string
- */
-function getPerformanceImpact(score: number): string {
-  if (score < 0.5) return ImpactLevel.CRITICAL;
-  if (score < 0.7) return ImpactLevel.SERIOUS;
-  if (score < 0.9) return ImpactLevel.MODERATE;
-  return ImpactLevel.MINOR;
+interface PerformanceAuditDetails {
+  items?: Array<{
+    resourceUrl?: string; // e.g., "https://example.com/script.js" (for render-blocking resources)
+    wastedMs?: number; // e.g., 150 (potential savings)
+    elementSelector?: string; // e.g., "img.hero" (for LCP element)
+    timing?: number; // e.g., 2.5 (specific timing value)
+  }>;
+  type?: string; // e.g., "opportunity" or "table"
 }
 
-/**
- * Runs a performance audit on the specified URL
- * @param url The URL to audit
- * @param limit Maximum number of issues to return
- * @param detailed Whether to include detailed information about each issue
- * @returns Promise resolving to the processed performance audit results
- */
+const FAILED_AUDITS_LIMIT = 5;
+const MAX_ITEMS_IN_DETAILS = 3;
+
 export async function runPerformanceAudit(
-  url: string,
-  limit: number = 5,
-  detailed: boolean = false
-): Promise<Partial<AuditResult>> {
+  url: string
+): Promise<LighthouseReport> {
   try {
-    // Run Lighthouse audit with performance category
-    const lhr = await runLighthouseOnExistingTab(url, [
-      AuditCategory.PERFORMANCE,
-    ]);
-
-    // Extract and process performance issues
-    const result = extractPerformanceIssues(lhr, limit, detailed);
-
-    return result;
+    const lhr = await runLighthouseAudit(url, [AuditCategory.PERFORMANCE]);
+    return extractPerformanceResult(lhr, url);
   } catch (error) {
     throw new Error(
       `Performance audit failed: ${
@@ -171,3 +41,107 @@ export async function runPerformanceAudit(
     );
   }
 }
+
+const extractPerformanceResult = (
+  lhr: LighthouseResult,
+  url: string
+): LighthouseReport => {
+  const categoryData = lhr.categories[AuditCategory.PERFORMANCE];
+  const metadata = {
+    url,
+    timestamp: lhr.fetchTime
+      ? new Date(lhr.fetchTime).toISOString()
+      : new Date().toISOString(),
+    device: "desktop", // TODO: pass device from the request instead of hardcoding
+    lighthouseVersion: lhr.lighthouseVersion,
+  };
+
+  if (!categoryData) {
+    return {
+      metadata,
+      failedAudits: [],
+      overallScore: 0,
+      failedAuditsCount: 0,
+      passedAuditsCount: 0,
+      manualAuditsCount: 0,
+      informativeAuditsCount: 0,
+      notApplicableAuditsCount: 0,
+    };
+  }
+
+  const overallScore = Math.round((categoryData.score || 0) * 100);
+  const auditRefs = categoryData.auditRefs || [];
+  const audits = lhr.audits || {};
+
+  const performanceAudits: PerformanceAudit[] = auditRefs.map((ref) => {
+    const audit = audits[ref.id];
+    let simplifiedDetails: PerformanceAuditDetails | undefined;
+
+    if (audit.details) {
+      simplifiedDetails = {};
+      if (
+        (audit.details as any).items &&
+        Array.isArray((audit.details as any).items)
+      ) {
+        const limitedItems = (audit.details as any).items.slice(
+          0,
+          MAX_ITEMS_IN_DETAILS
+        );
+        simplifiedDetails.items = limitedItems.map((item: any) => {
+          const simplifiedItem: any = {};
+          if (item.url) simplifiedItem.resourceUrl = item.url; // For render-blocking resources
+          if (item.wastedMs) simplifiedItem.wastedMs = item.wastedMs; // Potential savings
+          if (item.node?.selector)
+            simplifiedItem.elementSelector = item.node.selector; // For LCP element
+          if (item.timing) simplifiedItem.timing = item.timing; // Specific timing
+          return simplifiedItem;
+        });
+      }
+      if (audit.details.type) simplifiedDetails.type = audit.details.type;
+    }
+
+    return {
+      id: ref.id,
+      title: audit.title || "Untitled",
+      description: audit.description || "No description",
+      score: audit.score,
+      scoreDisplayMode: audit.scoreDisplayMode || "numeric",
+      numericValue: audit.numericValue,
+      numericUnit: audit.numericUnit,
+      details: simplifiedDetails,
+      weight: ref.weight || 1,
+    };
+  });
+
+  const failedAudits = performanceAudits
+    .filter((audit) => audit.score !== null && audit.score < 1)
+    .sort(
+      (a, b) =>
+        b.weight! * (1 - (b.score || 0)) - a.weight! * (1 - (a.score || 0))
+    )
+    .slice(0, FAILED_AUDITS_LIMIT);
+
+  const passedAudits = performanceAudits.filter(
+    (audit) => audit.score !== null && audit.score >= 1
+  );
+  const manualAudits = performanceAudits.filter(
+    (audit) => audit.scoreDisplayMode === "manual"
+  );
+  const informativeAudits = performanceAudits.filter(
+    (audit) => audit.scoreDisplayMode === "informative"
+  );
+  const notApplicableAudits = performanceAudits.filter(
+    (audit) => audit.scoreDisplayMode === "notApplicable"
+  );
+
+  return {
+    metadata,
+    overallScore,
+    failedAuditsCount: failedAudits.length,
+    passedAuditsCount: passedAudits.length,
+    manualAuditsCount: manualAudits.length,
+    informativeAuditsCount: informativeAudits.length,
+    notApplicableAuditsCount: notApplicableAudits.length,
+    failedAudits,
+  };
+};

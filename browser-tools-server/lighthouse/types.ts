@@ -1,71 +1,31 @@
 /**
- * Types for Lighthouse audit results and related data structures
+ * Audit categories available in Lighthouse
  */
-
-/**
- * Details about an HTML element that has accessibility or performance issues
- */
-export interface ElementDetails {
-  selector: string;
-  snippet: string;
-  explanation: string;
-  url: string;
-  size: number;
-  wastedMs: number;
-  wastedBytes: number;
+export enum AuditCategory {
+  ACCESSIBILITY = "accessibility",
+  PERFORMANCE = "performance",
+  SEO = "seo",
+  BEST_PRACTICES = "best-practices",
+  PWA = "pwa",
 }
 
 /**
- * Represents a single audit issue found during an audit
+ * Base interface for Lighthouse report metadata
  */
-export interface AuditIssue {
-  id: string;
-  title: string;
-  description: string;
-  score: number;
-  details: LighthouseDetails;
-  wcagReference: string[];
-  impact: string;
-  elements: ElementDetails[];
-  failureSummary: string;
-  recommendations?: string[];
-  category?: string;
-}
-
-/**
- * The complete result of an audit
- */
-export interface AuditResult {
-  score: number;
-  categoryScores: { [key: string]: number };
-  issues: AuditIssue[];
-  auditMetadata?: {
-    fetchTime: string;
+export interface LighthouseReport {
+  metadata: {
     url: string;
-    deviceEmulation: string;
-    categories: string[];
-    totalAudits: number;
-    passedAudits: number;
-    failedAudits: number;
+    timestamp: string; // ISO 8601, e.g., "2025-02-27T14:30:00Z"
+    device: string; // e.g., "mobile", "desktop"
+    lighthouseVersion: string; // e.g., "10.4.0"
   };
-}
-
-/**
- * Details structure from Lighthouse audit results
- */
-export interface LighthouseDetails {
-  type: string;
-  headings?: Array<{
-    key?: string;
-    itemType?: string;
-    text?: string;
-  }>;
-  items?: Array<Record<string, unknown>>;
-  debugData?: {
-    type: string;
-    impact?: string;
-    tags?: string[];
-  };
+  overallScore: number;
+  failedAuditsCount: number;
+  passedAuditsCount: number;
+  manualAuditsCount: number;
+  informativeAuditsCount: number;
+  notApplicableAuditsCount: number;
+  failedAudits: any[];
 }
 
 /**
@@ -95,25 +55,4 @@ export interface LighthouseConfig {
       };
     };
   };
-}
-
-/**
- * Audit categories available in Lighthouse
- */
-export enum AuditCategory {
-  ACCESSIBILITY = "accessibility",
-  PERFORMANCE = "performance",
-  SEO = "seo",
-  BEST_PRACTICES = "best-practices",
-  PWA = "pwa",
-}
-
-/**
- * Impact levels for audit issues
- */
-export enum ImpactLevel {
-  CRITICAL = "critical",
-  SERIOUS = "serious",
-  MODERATE = "moderate",
-  MINOR = "minor",
 }
