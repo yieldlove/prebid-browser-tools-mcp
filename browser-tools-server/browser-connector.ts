@@ -14,6 +14,7 @@ import {
   runPerformanceAudit,
   runAccessibilityAudit,
   runSEOAudit,
+  AuditCategory,
 } from "./lighthouse/index.js";
 
 // Function to get default downloads folder
@@ -868,130 +869,41 @@ export class BrowserConnector {
 
   // Sets up the accessibility audit endpoint
   private setupAccessibilityAudit() {
-    this.app.post("/accessibility-audit", async (req: any, res: any) => {
-      try {
-        console.log("Accessibility audit request received");
-
-        const limit = req.body?.limit || 5;
-        const detailed = req.body?.detailed || false;
-
-        // Get URL using our helper method
-        const url = await this.getUrlForAudit();
-
-        if (!url) {
-          console.log("No URL available for accessibility audit");
-          return res.status(400).json({
-            error:
-              "URL is required for accessibility audit. Make sure you navigate to a page in the browser first, and the browser-tool extension tab is open.",
-          });
-        }
-
-        // Check if we're using the default URL
-        if (url === "about:blank") {
-          console.log("Cannot run accessibility audit on about:blank");
-          return res.status(400).json({
-            error: "Cannot run accessibility audit on about:blank",
-          });
-        }
-
-        // Run the audit using the imported function
-        try {
-          const processedResults = await runAccessibilityAudit(
-            url,
-            limit,
-            detailed
-          );
-
-          console.log("Accessibility audit completed successfully");
-          // Return the results
-          res.json(processedResults);
-        } catch (auditError) {
-          console.error("Accessibility audit failed:", auditError);
-          const errorMessage =
-            auditError instanceof Error
-              ? auditError.message
-              : String(auditError);
-          res.status(500).json({
-            error: `Failed to run accessibility audit: ${errorMessage}`,
-          });
-        }
-      } catch (error) {
-        console.error("Error in accessibility audit endpoint:", error);
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        res.status(500).json({
-          error: `Error in accessibility audit endpoint: ${errorMessage}`,
-        });
-      }
-    });
+    this.setupAuditEndpoint(
+      AuditCategory.ACCESSIBILITY,
+      "/accessibility-audit",
+      runAccessibilityAudit
+    );
   }
 
   // Sets up the performance audit endpoint
   private setupPerformanceAudit() {
-    this.app.post("/performance-audit", async (req: any, res: any) => {
-      try {
-        console.log("Performance audit request received");
-
-        const limit = req.body?.limit || 5;
-        const detailed = req.body?.detailed || false;
-
-        console.log("Performance audit request body:", req.body);
-        // Get URL using our helper method
-        const url = await this.getUrlForAudit();
-
-        if (!url) {
-          console.log("No URL available for performance audit");
-          return res.status(400).json({
-            error:
-              "URL is required for performance audit. Make sure you navigate to a page in the browser first, and the browser-tool extension tab is open.",
-          });
-        }
-
-        // Check if we're using the default URL
-        if (url === "about:blank") {
-          console.log("Cannot run performance audit on about:blank");
-          return res.status(400).json({
-            error: "Cannot run performance audit on about:blank",
-          });
-        }
-
-        // Run the audit using the imported function
-        try {
-          const processedResults = await runPerformanceAudit(
-            url,
-            limit,
-            detailed
-          );
-
-          console.log("Performance audit completed successfully");
-          // Return the results
-          res.json(processedResults);
-        } catch (auditError) {
-          console.error("Performance audit failed:", auditError);
-          const errorMessage =
-            auditError instanceof Error
-              ? auditError.message
-              : String(auditError);
-          res.status(500).json({
-            error: `Failed to run performance audit: ${errorMessage}`,
-          });
-        }
-      } catch (error) {
-        console.error("Error in performance audit endpoint:", error);
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        res.status(500).json({
-          error: `Error in performance audit endpoint: ${errorMessage}`,
-        });
-      }
-    });
+    this.setupAuditEndpoint(
+      AuditCategory.PERFORMANCE,
+      "/performance-audit",
+      runPerformanceAudit
+    );
   }
 
   // Set up SEO audit endpoint
   private setupSEOAudit() {
-    this.app.post("/seo-audit", async (req: any, res: any) => {
+    this.setupAuditEndpoint(AuditCategory.SEO, "/seo-audit", runSEOAudit);
+  }
+
+  /**
+   * Generic method to set up an audit endpoint
+   * @param auditType The type of audit (accessibility, performance, SEO)
+   * @param endpoint The endpoint path
+   * @param auditFunction The audit function to call
+   */
+  private setupAuditEndpoint(
+    auditType: string,
+    endpoint: string,
+    auditFunction: (url: string) => Promise<any>
+  ) {
+    this.app.post(endpoint, async (req: any, res: any) => {
       try {
-        console.log("SEO audit request received");
+        console.log(`${auditType} audit request received`);
 
         const limit = req.body?.limit || 5;
         const detailed = req.body?.detailed || false;
@@ -1000,44 +912,43 @@ export class BrowserConnector {
         const url = await this.getUrlForAudit();
 
         if (!url) {
-          console.log("No URL available for SEO audit");
+          console.log(`No URL available for ${auditType} audit`);
           return res.status(400).json({
-            error:
-              "URL is required for SEO audit. Make sure you navigate to a page in the browser first, and the browser-tool extension tab is open.",
+            error: `URL is required for ${auditType} audit. Make sure you navigate to a page in the browser first, and the browser-tool extension tab is open.`,
           });
         }
 
         // Check if we're using the default URL
         if (url === "about:blank") {
-          console.log("Cannot run SEO audit on about:blank");
+          console.log(`Cannot run ${auditType} audit on about:blank`);
           return res.status(400).json({
-            error: "Cannot run SEO audit on about:blank",
+            error: `Cannot run ${auditType} audit on about:blank`,
           });
         }
 
-        // Run the audit using the imported function
+        // Run the audit using the provided function
         try {
-          const processedResults = await runSEOAudit(url, limit, detailed);
+          const processedResults = await auditFunction(url);
 
-          console.log("SEO audit completed successfully");
+          console.log(`${auditType} audit completed successfully`);
           // Return the results
           res.json(processedResults);
         } catch (auditError) {
-          console.error("SEO audit failed:", auditError);
+          console.error(`${auditType} audit failed:`, auditError);
           const errorMessage =
             auditError instanceof Error
               ? auditError.message
               : String(auditError);
           res.status(500).json({
-            error: `Failed to run SEO audit: ${errorMessage}`,
+            error: `Failed to run ${auditType} audit: ${errorMessage}`,
           });
         }
       } catch (error) {
-        console.error("Error in SEO audit endpoint:", error);
+        console.error(`Error in ${auditType} audit endpoint:`, error);
         const errorMessage =
           error instanceof Error ? error.message : String(error);
         res.status(500).json({
-          error: `Error in SEO audit endpoint: ${errorMessage}`,
+          error: `Error in ${auditType} audit endpoint: ${errorMessage}`,
         });
       }
     });
