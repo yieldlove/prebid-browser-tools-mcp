@@ -1,8 +1,5 @@
----
-description: When architecting and building an MCP server
-globs: *.ts
----
 ## Resources
+
 Expose data and content from your servers to LLMs
 
 Resources are a core primitive in the Model Context Protocol (MCP) that allow servers to expose data and content that can be read by clients and used as context for LLM interactions.
@@ -30,7 +27,6 @@ Each resource is identified by a unique URI and can contain either text or binar
 ​
 Resource URIs
 Resources are identified using URIs that follow this format:
-
 
 [protocol]://[host]/[path]
 For example:
@@ -70,23 +66,21 @@ Clients can discover available resources through two main methods:
 Direct resources
 Servers expose a list of concrete resources via the resources/list endpoint. Each resource includes:
 
-
 {
-  uri: string;           // Unique identifier for the resource
-  name: string;          // Human-readable name
-  description?: string;  // Optional description
-  mimeType?: string;     // Optional MIME type
+uri: string; // Unique identifier for the resource
+name: string; // Human-readable name
+description?: string; // Optional description
+mimeType?: string; // Optional MIME type
 }
 ​
 Resource templates
 For dynamic resources, servers can expose URI templates that clients can use to construct valid resource URIs:
 
-
 {
-  uriTemplate: string;   // URI template following RFC 6570
-  name: string;          // Human-readable name for this type
-  description?: string;  // Optional description
-  mimeType?: string;     // Optional MIME type for all matching resources
+uriTemplate: string; // URI template following RFC 6570
+name: string; // Human-readable name for this type
+description?: string; // Optional description
+mimeType?: string; // Optional MIME type for all matching resources
 }
 ​
 Reading resources
@@ -94,18 +88,18 @@ To read a resource, clients make a resources/read request with the resource URI.
 
 The server responds with a list of resource contents:
 
-
 {
-  contents: [
-    {
-      uri: string;        // The URI of the resource
-      mimeType?: string;  // Optional MIME type
+contents: [
+{
+uri: string; // The URI of the resource
+mimeType?: string; // Optional MIME type
 
       // One of:
       text?: string;      // For text resources
       blob?: string;      // For binary resources (base64 encoded)
     }
-  ]
+
+]
 }
 Servers may return multiple resources in response to one resources/read request. This could be used, for example, to return a list of files inside a directory when the directory is read.
 
@@ -129,8 +123,8 @@ Client can unsubscribe with resources/unsubscribe
 Example implementation
 Here’s a simple example of implementing resource support in an MCP server:
 
-
 ## Prompts
+
 Create reusable prompt templates and workflows
 
 Prompts enable servers to define reusable prompt templates and workflows that clients can easily surface to users and LLMs. They provide a powerful way to standardize and share common LLM interactions.
@@ -150,72 +144,69 @@ Surface as UI elements (like slash commands)
 Prompt structure
 Each prompt is defined with:
 
-
 {
-  name: string;              // Unique identifier for the prompt
-  description?: string;      // Human-readable description
-  arguments?: [              // Optional list of arguments
-    {
-      name: string;          // Argument identifier
-      description?: string;  // Argument description
-      required?: boolean;    // Whether argument is required
-    }
-  ]
+name: string; // Unique identifier for the prompt
+description?: string; // Human-readable description
+arguments?: [ // Optional list of arguments
+{
+name: string; // Argument identifier
+description?: string; // Argument description
+required?: boolean; // Whether argument is required
+}
+]
 }
 ​
 Discovering prompts
 Clients can discover available prompts through the prompts/list endpoint:
 
-
 // Request
 {
-  method: "prompts/list"
+method: "prompts/list"
 }
 
 // Response
 {
-  prompts: [
-    {
-      name: "analyze-code",
-      description: "Analyze code for potential improvements",
-      arguments: [
-        {
-          name: "language",
-          description: "Programming language",
-          required: true
-        }
-      ]
-    }
-  ]
+prompts: [
+{
+name: "analyze-code",
+description: "Analyze code for potential improvements",
+arguments: [
+{
+name: "language",
+description: "Programming language",
+required: true
+}
+]
+}
+]
 }
 ​
 Using prompts
 To use a prompt, clients make a prompts/get request:
 
-
 // Request
 {
-  method: "prompts/get",
-  params: {
-    name: "analyze-code",
-    arguments: {
-      language: "python"
-    }
-  }
+method: "prompts/get",
+params: {
+name: "analyze-code",
+arguments: {
+language: "python"
+}
+}
 }
 
 // Response
 {
-  description: "Analyze Python code for potential improvements",
-  messages: [
-    {
-      role: "user",
-      content: {
-        type: "text",
-        text: "Please analyze the following Python code for potential improvements:\n\n```python\ndef calculate_sum(numbers):\n    total = 0\n    for num in numbers:\n        total = total + num\n    return total\n\nresult = calculate_sum([1, 2, 3, 4, 5])\nprint(result)\n```"
-      }
-    }
-  ]
+description: "Analyze Python code for potential improvements",
+messages: [
+{
+role: "user",
+content: {
+type: "text",
+text: "Please analyze the following Python code for potential improvements:\n\n`python\ndef calculate_sum(numbers):\n    total = 0\n    for num in numbers:\n        total = total + num\n    return total\n\nresult = calculate_sum([1, 2, 3, 4, 5])\nprint(result)\n`"
+}
+}
+]
 }
 ​
 Dynamic prompts
@@ -225,87 +216,86 @@ Prompts can be dynamic and include:
 Embedded resource context
 
 {
-  "name": "analyze-project",
-  "description": "Analyze project logs and code",
-  "arguments": [
-    {
-      "name": "timeframe",
-      "description": "Time period to analyze logs",
-      "required": true
-    },
-    {
-      "name": "fileUri",
-      "description": "URI of code file to review",
-      "required": true
-    }
-  ]
+"name": "analyze-project",
+"description": "Analyze project logs and code",
+"arguments": [
+{
+"name": "timeframe",
+"description": "Time period to analyze logs",
+"required": true
+},
+{
+"name": "fileUri",
+"description": "URI of code file to review",
+"required": true
+}
+]
 }
 When handling the prompts/get request:
 
-
 {
-  "messages": [
-    {
-      "role": "user",
-      "content": {
-        "type": "text",
-        "text": "Analyze these system logs and the code file for any issues:"
-      }
-    },
-    {
-      "role": "user",
-      "content": {
-        "type": "resource",
-        "resource": {
-          "uri": "logs://recent?timeframe=1h",
-          "text": "[2024-03-14 15:32:11] ERROR: Connection timeout in network.py:127\n[2024-03-14 15:32:15] WARN: Retrying connection (attempt 2/3)\n[2024-03-14 15:32:20] ERROR: Max retries exceeded",
-          "mimeType": "text/plain"
-        }
-      }
-    },
-    {
-      "role": "user",
-      "content": {
-        "type": "resource",
-        "resource": {
-          "uri": "file:///path/to/code.py",
-          "text": "def connect_to_service(timeout=30):\n    retries = 3\n    for attempt in range(retries):\n        try:\n            return establish_connection(timeout)\n        except TimeoutError:\n            if attempt == retries - 1:\n                raise\n            time.sleep(5)\n\ndef establish_connection(timeout):\n    # Connection implementation\n    pass",
-          "mimeType": "text/x-python"
-        }
-      }
-    }
-  ]
+"messages": [
+{
+"role": "user",
+"content": {
+"type": "text",
+"text": "Analyze these system logs and the code file for any issues:"
+}
+},
+{
+"role": "user",
+"content": {
+"type": "resource",
+"resource": {
+"uri": "logs://recent?timeframe=1h",
+"text": "[2024-03-14 15:32:11] ERROR: Connection timeout in network.py:127\n[2024-03-14 15:32:15] WARN: Retrying connection (attempt 2/3)\n[2024-03-14 15:32:20] ERROR: Max retries exceeded",
+"mimeType": "text/plain"
+}
+}
+},
+{
+"role": "user",
+"content": {
+"type": "resource",
+"resource": {
+"uri": "file:///path/to/code.py",
+"text": "def connect_to_service(timeout=30):\n retries = 3\n for attempt in range(retries):\n try:\n return establish_connection(timeout)\n except TimeoutError:\n if attempt == retries - 1:\n raise\n time.sleep(5)\n\ndef establish_connection(timeout):\n # Connection implementation\n pass",
+"mimeType": "text/x-python"
+}
+}
+}
+]
 }
 ​
 Multi-step workflows
 
 const debugWorkflow = {
-  name: "debug-error",
-  async getMessages(error: string) {
-    return [
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: `Here's an error I'm seeing: ${error}`
-        }
-      },
-      {
-        role: "assistant",
-        content: {
-          type: "text",
-          text: "I'll help analyze this error. What have you tried so far?"
-        }
-      },
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: "I've tried restarting the service, but the error persists."
-        }
-      }
-    ];
-  }
+name: "debug-error",
+async getMessages(error: string) {
+return [
+{
+role: "user",
+content: {
+type: "text",
+text: `Here's an error I'm seeing: ${error}`
+}
+},
+{
+role: "assistant",
+content: {
+type: "text",
+text: "I'll help analyze this error. What have you tried so far?"
+}
+},
+{
+role: "user",
+content: {
+type: "text",
+text: "I've tried restarting the service, but the error persists."
+}
+}
+];
+}
 };
 ​
 Example implementation
@@ -316,93 +306,93 @@ Python
 
 import { Server } from "@modelcontextprotocol/sdk/server";
 import {
-  ListPromptsRequestSchema,
-  GetPromptRequestSchema
+ListPromptsRequestSchema,
+GetPromptRequestSchema
 } from "@modelcontextprotocol/sdk/types";
 
 const PROMPTS = {
-  "git-commit": {
-    name: "git-commit",
-    description: "Generate a Git commit message",
-    arguments: [
-      {
-        name: "changes",
-        description: "Git diff or description of changes",
-        required: true
-      }
-    ]
-  },
-  "explain-code": {
-    name: "explain-code",
-    description: "Explain how code works",
-    arguments: [
-      {
-        name: "code",
-        description: "Code to explain",
-        required: true
-      },
-      {
-        name: "language",
-        description: "Programming language",
-        required: false
-      }
-    ]
-  }
+"git-commit": {
+name: "git-commit",
+description: "Generate a Git commit message",
+arguments: [
+{
+name: "changes",
+description: "Git diff or description of changes",
+required: true
+}
+]
+},
+"explain-code": {
+name: "explain-code",
+description: "Explain how code works",
+arguments: [
+{
+name: "code",
+description: "Code to explain",
+required: true
+},
+{
+name: "language",
+description: "Programming language",
+required: false
+}
+]
+}
 };
 
 const server = new Server({
-  name: "example-prompts-server",
-  version: "1.0.0"
+name: "example-prompts-server",
+version: "1.0.0"
 }, {
-  capabilities: {
-    prompts: {}
-  }
+capabilities: {
+prompts: {}
+}
 });
 
 // List available prompts
 server.setRequestHandler(ListPromptsRequestSchema, async () => {
-  return {
-    prompts: Object.values(PROMPTS)
-  };
+return {
+prompts: Object.values(PROMPTS)
+};
 });
 
 // Get specific prompt
 server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-  const prompt = PROMPTS[request.params.name];
-  if (!prompt) {
-    throw new Error(`Prompt not found: ${request.params.name}`);
-  }
+const prompt = PROMPTS[request.params.name];
+if (!prompt) {
+throw new Error(`Prompt not found: ${request.params.name}`);
+}
 
-  if (request.params.name === "git-commit") {
-    return {
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text: `Generate a concise but descriptive commit message for these changes:\n\n${request.params.arguments?.changes}`
-          }
-        }
-      ]
-    };
-  }
+if (request.params.name === "git-commit") {
+return {
+messages: [
+{
+role: "user",
+content: {
+type: "text",
+text: `Generate a concise but descriptive commit message for these changes:\n\n${request.params.arguments?.changes}`
+}
+}
+]
+};
+}
 
-  if (request.params.name === "explain-code") {
-    const language = request.params.arguments?.language || "Unknown";
-    return {
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text: `Explain how this ${language} code works:\n\n${request.params.arguments?.code}`
-          }
-        }
-      ]
-    };
-  }
+if (request.params.name === "explain-code") {
+const language = request.params.arguments?.language || "Unknown";
+return {
+messages: [
+{
+role: "user",
+content: {
+type: "text",
+text: `Explain how this ${language} code works:\n\n${request.params.arguments?.code}`
+}
+}
+]
+};
+}
 
-  throw new Error("Prompt implementation not found");
+throw new Error("Prompt implementation not found");
 });
 ​
 Best practices
@@ -472,14 +462,13 @@ Like resources, tools are identified by unique names and can include description
 Tool definition structure
 Each tool is defined with the following structure:
 
-
 {
-  name: string;          // Unique identifier for the tool
-  description?: string;  // Human-readable description
-  inputSchema: {         // JSON Schema for the tool's parameters
-    type: "object",
-    properties: { ... }  // Tool-specific parameters
-  }
+name: string; // Unique identifier for the tool
+description?: string; // Human-readable description
+inputSchema: { // JSON Schema for the tool's parameters
+type: "object",
+properties: { ... } // Tool-specific parameters
+}
 }
 ​
 Implementing tools
@@ -489,46 +478,46 @@ TypeScript
 Python
 
 const server = new Server({
-  name: "example-server",
-  version: "1.0.0"
+name: "example-server",
+version: "1.0.0"
 }, {
-  capabilities: {
-    tools: {}
-  }
+capabilities: {
+tools: {}
+}
 });
 
 // Define available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [{
-      name: "calculate_sum",
-      description: "Add two numbers together",
-      inputSchema: {
-        type: "object",
-        properties: {
-          a: { type: "number" },
-          b: { type: "number" }
-        },
-        required: ["a", "b"]
-      }
-    }]
-  };
+return {
+tools: [{
+name: "calculate_sum",
+description: "Add two numbers together",
+inputSchema: {
+type: "object",
+properties: {
+a: { type: "number" },
+b: { type: "number" }
+},
+required: ["a", "b"]
+}
+}]
+};
 });
 
 // Handle tool execution
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name === "calculate_sum") {
-    const { a, b } = request.params.arguments;
-    return {
-      content: [
-        {
-          type: "text",
-          text: String(a + b)
-        }
-      ]
-    };
-  }
-  throw new Error("Tool not found");
+if (request.params.name === "calculate_sum") {
+const { a, b } = request.params.arguments;
+return {
+content: [
+{
+type: "text",
+text: String(a + b)
+}
+]
+};
+}
+throw new Error("Tool not found");
 });
 ​
 Example tool patterns
@@ -538,55 +527,52 @@ Here are some examples of types of tools that a server could provide:
 System operations
 Tools that interact with the local system:
 
-
 {
-  name: "execute_command",
-  description: "Run a shell command",
-  inputSchema: {
-    type: "object",
-    properties: {
-      command: { type: "string" },
-      args: { type: "array", items: { type: "string" } }
-    }
-  }
+name: "execute_command",
+description: "Run a shell command",
+inputSchema: {
+type: "object",
+properties: {
+command: { type: "string" },
+args: { type: "array", items: { type: "string" } }
+}
+}
 }
 ​
 API integrations
 Tools that wrap external APIs:
 
-
 {
-  name: "github_create_issue",
-  description: "Create a GitHub issue",
-  inputSchema: {
-    type: "object",
-    properties: {
-      title: { type: "string" },
-      body: { type: "string" },
-      labels: { type: "array", items: { type: "string" } }
-    }
-  }
+name: "github_create_issue",
+description: "Create a GitHub issue",
+inputSchema: {
+type: "object",
+properties: {
+title: { type: "string" },
+body: { type: "string" },
+labels: { type: "array", items: { type: "string" } }
+}
+}
 }
 ​
 Data processing
 Tools that transform or analyze data:
 
-
 {
-  name: "analyze_csv",
-  description: "Analyze a CSV file",
-  inputSchema: {
-    type: "object",
-    properties: {
-      filepath: { type: "string" },
-      operations: {
-        type: "array",
-        items: {
-          enum: ["sum", "average", "count"]
-        }
-      }
-    }
-  }
+name: "analyze_csv",
+description: "Analyze a CSV file",
+inputSchema: {
+type: "object",
+properties: {
+filepath: { type: "string" },
+operations: {
+type: "array",
+items: {
+enum: ["sum", "average", "count"]
+}
+}
+}
+}
 }
 ​
 Best practices
@@ -647,26 +633,26 @@ TypeScript
 Python
 
 try {
-  // Tool operation
-  const result = performOperation();
-  return {
-    content: [
-      {
-        type: "text",
-        text: `Operation successful: ${result}`
-      }
-    ]
-  };
+// Tool operation
+const result = performOperation();
+return {
+content: [
+{
+type: "text",
+text: `Operation successful: ${result}`
+}
+]
+};
 } catch (error) {
-  return {
-    isError: true,
-    content: [
-      {
-        type: "text",
-        text: `Error: ${error.message}`
-      }
-    ]
-  };
+return {
+isError: true,
+content: [
+{
+type: "text",
+text: `Error: ${error.message}`
+}
+]
+};
 }
 This approach allows the LLM to see that an error occurred and potentially take corrective action or request human intervention.
 
@@ -681,6 +667,7 @@ Performance testing: Check behavior under load, timeout handling, and resource c
 Error handling: Ensure tools properly report errors through the MCP protocol and clean up resources
 
 ## Sampling
+
 Sampling
 Let your servers request completions from LLMs
 
@@ -703,13 +690,12 @@ This human-in-the-loop design ensures users maintain control over what the LLM s
 Message format
 Sampling requests use a standardized message format:
 
-
 {
-  messages: [
-    {
-      role: "user" | "assistant",
-      content: {
-        type: "text" | "image",
+messages: [
+{
+role: "user" | "assistant",
+content: {
+type: "text" | "image",
 
         // For text:
         text?: string,
@@ -719,21 +705,22 @@ Sampling requests use a standardized message format:
         mimeType?: string
       }
     }
-  ],
-  modelPreferences?: {
-    hints?: [{
-      name?: string                // Suggested model name/family
-    }],
-    costPriority?: number,         // 0-1, importance of minimizing cost
-    speedPriority?: number,        // 0-1, importance of low latency
-    intelligencePriority?: number  // 0-1, importance of capabilities
-  },
-  systemPrompt?: string,
-  includeContext?: "none" | "thisServer" | "allServers",
-  temperature?: number,
-  maxTokens: number,
-  stopSequences?: string[],
-  metadata?: Record<string, unknown>
+
+],
+modelPreferences?: {
+hints?: [{
+name?: string // Suggested model name/family
+}],
+costPriority?: number, // 0-1, importance of minimizing cost
+speedPriority?: number, // 0-1, importance of low latency
+intelligencePriority?: number // 0-1, importance of capabilities
+},
+systemPrompt?: string,
+includeContext?: "none" | "thisServer" | "allServers",
+temperature?: number,
+maxTokens: number,
+stopSequences?: string[],
+metadata?: Record<string, unknown>
 }
 ​
 Request parameters
@@ -786,39 +773,37 @@ metadata: Additional provider-specific parameters
 Response format
 The client returns a completion result:
 
-
 {
-  model: string,  // Name of the model used
-  stopReason?: "endTurn" | "stopSequence" | "maxTokens" | string,
-  role: "user" | "assistant",
-  content: {
-    type: "text" | "image",
-    text?: string,
-    data?: string,
-    mimeType?: string
-  }
+model: string, // Name of the model used
+stopReason?: "endTurn" | "stopSequence" | "maxTokens" | string,
+role: "user" | "assistant",
+content: {
+type: "text" | "image",
+text?: string,
+data?: string,
+mimeType?: string
+}
 }
 ​
 Example request
 Here’s an example of requesting sampling from a client:
 
-
 {
-  "method": "sampling/createMessage",
-  "params": {
-    "messages": [
-      {
-        "role": "user",
-        "content": {
-          "type": "text",
-          "text": "What files are in the current directory?"
-        }
-      }
-    ],
-    "systemPrompt": "You are a helpful file system assistant.",
-    "includeContext": "thisServer",
-    "maxTokens": 100
-  }
+"method": "sampling/createMessage",
+"params": {
+"messages": [
+{
+"role": "user",
+"content": {
+"type": "text",
+"text": "What files are in the current directory?"
+}
+}
+],
+"systemPrompt": "You are a helpful file system assistant.",
+"includeContext": "thisServer",
+"maxTokens": 100
+}
 }
 ​
 Best practices
@@ -920,7 +905,6 @@ A root is a URI that a client suggests a server should focus on. When a client c
 
 For example, roots could be:
 
-
 file:///home/user/projects/myapp
 https://api.example.com/v1
 ​
@@ -963,18 +947,17 @@ Handle root changes gracefully
 Example
 Here’s how a typical MCP client might expose roots:
 
-
 {
-  "roots": [
-    {
-      "uri": "file:///home/user/projects/frontend",
-      "name": "Frontend Repository"
-    },
-    {
-      "uri": "https://api.example.com/v1",
-      "name": "API Endpoint"
-    }
-  ]
+"roots": [
+{
+"uri": "file:///home/user/projects/frontend",
+"name": "Frontend Repository"
+},
+{
+"uri": "https://api.example.com/v1",
+"name": "API Endpoint"
+}
+]
 }
 This configuration suggests the server focus on both a local repository and an API endpoint while keeping them logically separated.
 
@@ -995,31 +978,31 @@ There are three types of JSON-RPC messages used:
 Requests
 
 {
-  jsonrpc: "2.0",
-  id: number | string,
-  method: string,
-  params?: object
+jsonrpc: "2.0",
+id: number | string,
+method: string,
+params?: object
 }
 ​
 Responses
 
 {
-  jsonrpc: "2.0",
-  id: number | string,
-  result?: object,
-  error?: {
-    code: number,
-    message: string,
-    data?: unknown
-  }
+jsonrpc: "2.0",
+id: number | string,
+result?: object,
+error?: {
+code: number,
+message: string,
+data?: unknown
+}
 }
 ​
 Notifications
 
 {
-  jsonrpc: "2.0",
-  method: string,
-  params?: object
+jsonrpc: "2.0",
+method: string,
+params?: object
 }
 ​
 Built-in Transport Types
@@ -1041,10 +1024,10 @@ Python (Server)
 Python (Client)
 
 const server = new Server({
-  name: "example-server",
-  version: "1.0.0"
+name: "example-server",
+version: "1.0.0"
 }, {
-  capabilities: {}
+capabilities: {}
 });
 
 const transport = new StdioServerTransport();
@@ -1068,23 +1051,23 @@ import express from "express";
 const app = express();
 
 const server = new Server({
-  name: "example-server",
-  version: "1.0.0"
+name: "example-server",
+version: "1.0.0"
 }, {
-  capabilities: {}
+capabilities: {}
 });
 
 let transport: SSEServerTransport | null = null;
 
 app.get("/sse", (req, res) => {
-  transport = new SSEServerTransport("/messages", res);
-  server.connect(transport);
+transport = new SSEServerTransport("/messages", res);
+server.connect(transport);
 });
 
 app.post("/messages", (req, res) => {
-  if (transport) {
-    transport.handlePostMessage(req, res);
-  }
+if (transport) {
+transport.handlePostMessage(req, res);
+}
 });
 
 app.listen(3000);
@@ -1102,19 +1085,19 @@ TypeScript
 Python
 
 interface Transport {
-  // Start processing messages
-  start(): Promise<void>;
+// Start processing messages
+start(): Promise<void>;
 
-  // Send a JSON-RPC message
-  send(message: JSONRPCMessage): Promise<void>;
+// Send a JSON-RPC message
+send(message: JSONRPCMessage): Promise<void>;
 
-  // Close the connection
-  close(): Promise<void>;
+// Close the connection
+close(): Promise<void>;
 
-  // Callbacks
-  onclose?: () => void;
-  onerror?: (error: Error) => void;
-  onmessage?: (message: JSONRPCMessage) => void;
+// Callbacks
+onclose?: () => void;
+onerror?: (error: Error) => void;
+onmessage?: (message: JSONRPCMessage) => void;
 }
 ​
 Error Handling
@@ -1131,23 +1114,23 @@ TypeScript
 Python
 
 class ExampleTransport implements Transport {
-  async start() {
-    try {
-      // Connection logic
-    } catch (error) {
-      this.onerror?.(new Error(`Failed to connect: ${error}`));
-      throw error;
-    }
-  }
+async start() {
+try {
+// Connection logic
+} catch (error) {
+this.onerror?.(new Error(`Failed to connect: ${error}`));
+throw error;
+}
+}
 
-  async send(message: JSONRPCMessage) {
-    try {
-      // Sending logic
-    } catch (error) {
-      this.onerror?.(new Error(`Failed to send message: ${error}`));
-      throw error;
-    }
-  }
+async send(message: JSONRPCMessage) {
+try {
+// Sending logic
+} catch (error) {
+this.onerror?.(new Error(`Failed to send message: ${error}`));
+throw error;
+}
+}
 }
 ​
 Best Practices
