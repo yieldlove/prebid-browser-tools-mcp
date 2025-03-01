@@ -2,9 +2,6 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import path from "path";
-// import { z } from "zod";
-// import fs from "fs";
 
 // Create the MCP server
 const server = new McpServer({
@@ -60,7 +57,7 @@ server.tool(
 );
 
 // Return all HTTP errors (4xx/5xx)
-server.tool("getNetworkErrors", "Check our network ERROR logs", async () => {
+server.tool("getNetworkErrorLogs", "Check our network ERROR logs", async () => {
   const response = await fetch(`http://127.0.0.1:${PORT}/network-errors`);
   const json = await response.json();
   return {
@@ -74,6 +71,7 @@ server.tool("getNetworkErrors", "Check our network ERROR logs", async () => {
 });
 
 // // Return all XHR/fetch requests
+// // DEPRECATED: Use getNetworkSuccessLogs and getNetworkErrorLogs instead
 // server.tool("getNetworkSuccess", "Check our network SUCCESS logs", async () => {
 //   const response = await fetch(`http://127.0.0.1:${PORT}/all-xhr`);
 //   const json = await response.json();
@@ -88,8 +86,8 @@ server.tool("getNetworkErrors", "Check our network ERROR logs", async () => {
 // });
 
 // Return all XHR/fetch requests
-server.tool("getNetworkLogs", "Check ALL our network logs", async () => {
-  const response = await fetch(`http://127.0.0.1:${PORT}/all-xhr`);
+server.tool("getNetworkSuccessLogs", "Check ALL our network logs", async () => {
+  const response = await fetch(`http://127.0.0.1:${PORT}/network-success`);
   const json = await response.json();
   return {
     content: [
@@ -117,6 +115,7 @@ server.tool(
       const result = await response.json();
 
       if (response.ok) {
+        // Removed path due to bug... will change later anyways
         // const message = `Screenshot saved to: ${
         //   result.path
         // }\nFilename: ${path.basename(result.path)}`;
