@@ -85,19 +85,23 @@ server.tool("getNetworkErrorLogs", "Check our network ERROR logs", async () => {
 //   };
 // });
 
-// Return all XHR/fetch requests
-server.tool("getNetworkSuccessLogs", "Check ALL our network logs", async () => {
-  const response = await fetch(`http://127.0.0.1:${PORT}/network-success`);
-  const json = await response.json();
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(json, null, 2),
-      },
-    ],
-  };
-});
+// Return network success logs
+server.tool(
+  "getNetworkSuccessLogs",
+  "Check our network SUCCESS logs",
+  async () => {
+    const response = await fetch(`http://127.0.0.1:${PORT}/network-success`);
+    const json = await response.json();
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(json, null, 2),
+        },
+      ],
+    };
+  }
+);
 
 // Add new tool for taking screenshots
 server.tool(
