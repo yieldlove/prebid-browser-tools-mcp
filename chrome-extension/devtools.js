@@ -173,9 +173,17 @@ function processJsonString(jsonString, maxLength) {
 }
 
 // Helper to send logs to browser-connector
-function sendToBrowserConnector(logData) {
+async function sendToBrowserConnector(logData) {
   if (!logData) {
     console.error("No log data provided to sendToBrowserConnector");
+    return;
+  }
+
+  // First, ensure we're connecting to the right server
+  if (!(await validateServerIdentity())) {
+    console.error(
+      "Cannot send logs: Not connected to a valid browser tools server"
+    );
     return;
   }
 
@@ -274,6 +282,37 @@ function sendToBrowserConnector(logData) {
     .catch((error) => {
       console.error("Error sending log:", error);
     });
+}
+
+// Validate server identity before connecting
+async function validateServerIdentity() {
+  try {
+    const serverUrl = `http://${settings.serverHost}:${settings.serverPort}/.identity`;
+
+    // Check if the server is our browser-tools-server
+    const response = await fetch(serverUrl, {
+      signal: AbortSignal.timeout(2000), // 2 second timeout
+    });
+
+    if (!response.ok) {
+      console.error(`Invalid server response: ${response.status}`);
+      return false;
+    }
+
+    const identity = await response.json();
+
+    // Validate the server signature
+    if (identity.signature !== "mcp-browser-connector-24x7") {
+      console.error("Invalid server signature - not the browser tools server");
+      return false;
+    }
+
+    // If reached here, the server is valid
+    return true;
+  } catch (error) {
+    console.error("Error validating server identity:", error);
+    return false;
+  }
 }
 
 // Function to clear logs on the server
@@ -553,9 +592,19 @@ let ws = null;
 let wsReconnectTimeout = null;
 const WS_RECONNECT_DELAY = 5000; // 5 seconds
 
-function setupWebSocket() {
+async function setupWebSocket() {
   if (ws) {
     ws.close();
+  }
+
+  // Validate server identity before connecting
+  if (!(await validateServerIdentity())) {
+    console.error(
+      "Cannot establish WebSocket: Not connected to a valid browser tools server"
+    );
+    // Try again after delay
+    setTimeout(setupWebSocket, WS_RECONNECT_DELAY);
+    return;
   }
 
   const wsUrl = `ws://${settings.serverHost}:${settings.serverPort}/extension-ws`;

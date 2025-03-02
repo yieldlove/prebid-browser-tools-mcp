@@ -139,19 +139,28 @@ async function testConnection(host, port) {
   statusText.textContent = "Testing connection...";
 
   try {
-    const response = await fetch(`http://${host}:${port}/.port`, {
+    // Use the identity endpoint instead of .port for more reliable validation
+    const response = await fetch(`http://${host}:${port}/.identity`, {
       signal: AbortSignal.timeout(5000), // 5 second timeout
     });
 
     if (response.ok) {
-      const responsePort = await response.text();
+      const identity = await response.json();
+
+      // Verify this is actually our server by checking the signature
+      if (identity.signature !== "mcp-browser-connector-24x7") {
+        statusIcon.className = "status-indicator status-disconnected";
+        statusText.textContent = `Connection failed: Found a server at ${host}:${port} but it's not the Browser Tools server`;
+        return;
+      }
+
       statusIcon.className = "status-indicator status-connected";
-      statusText.textContent = `Connected successfully to server at ${host}:${port}`;
+      statusText.textContent = `Connected successfully to ${identity.name} v${identity.version} at ${host}:${port}`;
 
       // Update settings if different port was discovered
-      if (parseInt(responsePort, 10) !== port) {
-        console.log(`Detected different port: ${responsePort}`);
-        settings.serverPort = parseInt(responsePort, 10);
+      if (parseInt(identity.port, 10) !== port) {
+        console.log(`Detected different port: ${identity.port}`);
+        settings.serverPort = parseInt(identity.port, 10);
         serverPortInput.value = settings.serverPort;
         saveSettings();
       }
@@ -218,24 +227,33 @@ discoverServerButton.addEventListener("click", async () => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 1000); // 1 second timeout per attempt
 
-        const response = await fetch(`http://${host}:${port}/.port`, {
+        // Use identity endpoint instead of .port for more reliable server validation
+        const response = await fetch(`http://${host}:${port}/.identity`, {
           signal: controller.signal,
         });
 
         clearTimeout(timeoutId);
 
         if (response.ok) {
-          const responsePort = await response.text();
+          const identity = await response.json();
+
+          // Verify this is actually our server by checking the signature
+          if (identity.signature !== "mcp-browser-connector-24x7") {
+            console.log(
+              `Found a server at ${host}:${port} but it's not the Browser Tools server`
+            );
+            continue;
+          }
 
           // Update settings with discovered server
           settings.serverHost = host;
-          settings.serverPort = parseInt(responsePort, 10);
+          settings.serverPort = parseInt(identity.port, 10);
           serverHostInput.value = settings.serverHost;
           serverPortInput.value = settings.serverPort;
           saveSettings();
 
           statusIcon.className = "status-indicator status-connected";
-          statusText.textContent = `Discovered server at ${host}:${responsePort}`;
+          statusText.textContent = `Discovered ${identity.name} v${identity.version} at ${host}:${identity.port}`;
 
           // Stop searching once found
           return;

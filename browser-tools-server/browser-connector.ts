@@ -418,6 +418,16 @@ app.get("/.port", (req, res) => {
   res.send(PORT.toString());
 });
 
+// Add new identity endpoint with a unique signature
+app.get("/.identity", (req, res) => {
+  res.json({
+    port: PORT,
+    name: "browser-tools-server",
+    version: "1.1.0",
+    signature: "mcp-browser-connector-24x7",
+  });
+});
+
 // Add function to clear all logs
 function clearAllLogs() {
   console.log("Wiping all logs...");

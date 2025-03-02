@@ -8,94 +8,150 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         serverPort: 3025,
       };
 
-      // Get the inspected window's tab
-      chrome.tabs.get(message.tabId, (tab) => {
-        if (chrome.runtime.lastError) {
-          console.error("Error getting tab:", chrome.runtime.lastError);
-          sendResponse({
-            success: false,
-            error: chrome.runtime.lastError.message,
-          });
-          return;
-        }
-
-        // Get all windows to find the one containing our tab
-        chrome.windows.getAll({ populate: true }, (windows) => {
-          const targetWindow = windows.find((w) =>
-            w.tabs.some((t) => t.id === message.tabId)
-          );
-
-          if (!targetWindow) {
-            console.error("Could not find window containing the inspected tab");
+      // Validate server identity first
+      validateServerIdentity(settings.serverHost, settings.serverPort)
+        .then((isValid) => {
+          if (!isValid) {
+            console.error(
+              "Cannot capture screenshot: Not connected to a valid browser tools server"
+            );
             sendResponse({
               success: false,
-              error: "Could not find window containing the inspected tab",
+              error:
+                "Not connected to a valid browser tools server. Please check your connection settings.",
             });
             return;
           }
 
-          // Capture screenshot of the window containing our tab
-          chrome.tabs.captureVisibleTab(
-            targetWindow.id,
-            { format: "png" },
-            (dataUrl) => {
-              // Ignore DevTools panel capture error if it occurs
-              if (
-                chrome.runtime.lastError &&
-                !chrome.runtime.lastError.message.includes("devtools://")
-              ) {
-                console.error(
-                  "Error capturing screenshot:",
-                  chrome.runtime.lastError
-                );
-                sendResponse({
-                  success: false,
-                  error: chrome.runtime.lastError.message,
-                });
-                return;
-              }
-
-              // Send screenshot data to browser connector using configured settings
-              const serverUrl = `http://${settings.serverHost}:${settings.serverPort}/screenshot`;
-              console.log(`Sending screenshot to ${serverUrl}`);
-
-              fetch(serverUrl, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  data: dataUrl,
-                  path: message.screenshotPath,
-                }),
-              })
-                .then((response) => response.json())
-                .then((result) => {
-                  if (result.error) {
-                    console.error("Error from server:", result.error);
-                    sendResponse({ success: false, error: result.error });
-                  } else {
-                    console.log("Screenshot saved successfully:", result.path);
-                    // Send success response even if DevTools capture failed
-                    sendResponse({
-                      success: true,
-                      path: result.path,
-                      title: tab.title || "Current Tab",
-                    });
-                  }
-                })
-                .catch((error) => {
-                  console.error("Error sending screenshot data:", error);
-                  sendResponse({
-                    success: false,
-                    error: error.message || "Failed to save screenshot",
-                  });
-                });
-            }
-          );
+          // Continue with screenshot capture
+          captureAndSendScreenshot(message, settings, sendResponse);
+        })
+        .catch((error) => {
+          console.error("Error validating server:", error);
+          sendResponse({
+            success: false,
+            error: "Failed to validate server identity: " + error.message,
+          });
         });
-      });
     });
     return true; // Required to use sendResponse asynchronously
   }
 });
+
+// Validate server identity
+async function validateServerIdentity(host, port) {
+  try {
+    const response = await fetch(`http://${host}:${port}/.identity`, {
+      signal: AbortSignal.timeout(3000), // 3 second timeout
+    });
+
+    if (!response.ok) {
+      console.error(`Invalid server response: ${response.status}`);
+      return false;
+    }
+
+    const identity = await response.json();
+
+    // Validate the server signature
+    if (identity.signature !== "mcp-browser-connector-24x7") {
+      console.error("Invalid server signature - not the browser tools server");
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error validating server identity:", error);
+    return false;
+  }
+}
+
+// Function to capture and send screenshot
+function captureAndSendScreenshot(message, settings, sendResponse) {
+  // Get the inspected window's tab
+  chrome.tabs.get(message.tabId, (tab) => {
+    if (chrome.runtime.lastError) {
+      console.error("Error getting tab:", chrome.runtime.lastError);
+      sendResponse({
+        success: false,
+        error: chrome.runtime.lastError.message,
+      });
+      return;
+    }
+
+    // Get all windows to find the one containing our tab
+    chrome.windows.getAll({ populate: true }, (windows) => {
+      const targetWindow = windows.find((w) =>
+        w.tabs.some((t) => t.id === message.tabId)
+      );
+
+      if (!targetWindow) {
+        console.error("Could not find window containing the inspected tab");
+        sendResponse({
+          success: false,
+          error: "Could not find window containing the inspected tab",
+        });
+        return;
+      }
+
+      // Capture screenshot of the window containing our tab
+      chrome.tabs.captureVisibleTab(
+        targetWindow.id,
+        { format: "png" },
+        (dataUrl) => {
+          // Ignore DevTools panel capture error if it occurs
+          if (
+            chrome.runtime.lastError &&
+            !chrome.runtime.lastError.message.includes("devtools://")
+          ) {
+            console.error(
+              "Error capturing screenshot:",
+              chrome.runtime.lastError
+            );
+            sendResponse({
+              success: false,
+              error: chrome.runtime.lastError.message,
+            });
+            return;
+          }
+
+          // Send screenshot data to browser connector using configured settings
+          const serverUrl = `http://${settings.serverHost}:${settings.serverPort}/screenshot`;
+          console.log(`Sending screenshot to ${serverUrl}`);
+
+          fetch(serverUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              data: dataUrl,
+              path: message.screenshotPath,
+            }),
+          })
+            .then((response) => response.json())
+            .then((result) => {
+              if (result.error) {
+                console.error("Error from server:", result.error);
+                sendResponse({ success: false, error: result.error });
+              } else {
+                console.log("Screenshot saved successfully:", result.path);
+                // Send success response even if DevTools capture failed
+                sendResponse({
+                  success: true,
+                  path: result.path,
+                  title: tab.title || "Current Tab",
+                });
+              }
+            })
+            .catch((error) => {
+              console.error("Error sending screenshot data:", error);
+              sendResponse({
+                success: false,
+                error: error.message || "Failed to save screenshot",
+              });
+            });
+        }
+      );
+    });
+  });
+}
