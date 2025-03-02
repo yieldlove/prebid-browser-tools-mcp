@@ -2,32 +2,61 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import path from "path";
+import fs from "fs";
+import os from "os";
 
 // Create the MCP server
 const server = new McpServer({
-  name: "Browsert Tools MCP",
+  name: "Browser Tools MCP",
   version: "1.0.9",
 });
 
-// Function to get the port from the .port file
-// function getPort(): number {
-//   try {
-//     const port = parseInt(fs.readFileSync(".port", "utf8"));
-//     return port;
-//   } catch (err) {
-//     console.error("Could not read port file, defaulting to 3000");
-//     return 3025;
-//   }
-// }
+// Function to get the port from environment variable or default
+function getServerPort(): number {
+  // Check environment variable first
+  if (process.env.BROWSER_TOOLS_PORT) {
+    const envPort = parseInt(process.env.BROWSER_TOOLS_PORT, 10);
+    if (!isNaN(envPort) && envPort > 0) {
+      return envPort;
+    }
+  }
 
-// const PORT = getPort();
+  // Try to read from .port file
+  try {
+    const portFilePath = path.join(__dirname, ".port");
+    if (fs.existsSync(portFilePath)) {
+      const port = parseInt(fs.readFileSync(portFilePath, "utf8").trim(), 10);
+      if (!isNaN(port) && port > 0) {
+        return port;
+      }
+    }
+  } catch (err) {
+    console.error("Error reading port file:", err);
+  }
 
-const PORT = 3025;
+  // Default port if no configuration found
+  return 3025;
+}
+
+// Function to get server host from environment variable or default
+function getServerHost(): string {
+  // Check environment variable first
+  if (process.env.BROWSER_TOOLS_HOST) {
+    return process.env.BROWSER_TOOLS_HOST;
+  }
+
+  // Default to localhost
+  return "127.0.0.1";
+}
+
+const PORT = getServerPort();
+const HOST = getServerHost();
 
 // We'll define four "tools" that retrieve data from the aggregator at localhost:3000
 
 server.tool("getConsoleLogs", "Check our browser logs", async () => {
-  const response = await fetch(`http://127.0.0.1:${PORT}/console-logs`);
+  const response = await fetch(`http://${HOST}:${PORT}/console-logs`);
   const json = await response.json();
   return {
     content: [
@@ -43,7 +72,7 @@ server.tool(
   "getConsoleErrors",
   "Check our browsers console errors",
   async () => {
-    const response = await fetch(`http://127.0.0.1:${PORT}/console-errors`);
+    const response = await fetch(`http://${HOST}:${PORT}/console-errors`);
     const json = await response.json();
     return {
       content: [
@@ -58,7 +87,7 @@ server.tool(
 
 // Return all HTTP errors (4xx/5xx)
 server.tool("getNetworkErrorLogs", "Check our network ERROR logs", async () => {
-  const response = await fetch(`http://127.0.0.1:${PORT}/network-errors`);
+  const response = await fetch(`http://${HOST}:${PORT}/network-errors`);
   const json = await response.json();
   return {
     content: [
@@ -90,7 +119,7 @@ server.tool(
   "getNetworkSuccessLogs",
   "Check our network SUCCESS logs",
   async () => {
-    const response = await fetch(`http://127.0.0.1:${PORT}/network-success`);
+    const response = await fetch(`http://${HOST}:${PORT}/network-success`);
     const json = await response.json();
     return {
       content: [
@@ -110,7 +139,7 @@ server.tool(
   async () => {
     try {
       const response = await fetch(
-        `http://127.0.0.1:${PORT}/capture-screenshot`,
+        `http://${HOST}:${PORT}/capture-screenshot`,
         {
           method: "POST",
         }
@@ -161,7 +190,7 @@ server.tool(
   "getSelectedElement",
   "Get the selected element from the browser",
   async () => {
-    const response = await fetch(`http://127.0.0.1:${PORT}/selected-element`);
+    const response = await fetch(`http://${HOST}:${PORT}/selected-element`);
     const json = await response.json();
     return {
       content: [
@@ -176,7 +205,7 @@ server.tool(
 
 // Add new tool for wiping logs
 server.tool("wipeLogs", "Wipe all browser logs from memory", async () => {
-  const response = await fetch(`http://127.0.0.1:${PORT}/wipelogs`, {
+  const response = await fetch(`http://${HOST}:${PORT}/wipelogs`, {
     method: "POST",
   });
   const json = await response.json();
