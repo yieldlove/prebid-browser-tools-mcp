@@ -9,6 +9,8 @@ let settings = {
   showRequestHeaders: false,
   showResponseHeaders: false,
   screenshotPath: "", // Add new setting for screenshot path
+  serverHost: "localhost", // Default server host
+  serverPort: 3025, // Default server port
 };
 
 // Keep track of debugger state
@@ -29,6 +31,16 @@ chrome.storage.local.get(["browserConnectorSettings"], (result) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "SETTINGS_UPDATED") {
     settings = message.settings;
+
+    // If server settings changed and we have a WebSocket, reconnect
+    if (
+      ws &&
+      (message.settings.serverHost !== settings.serverHost ||
+        message.settings.serverPort !== settings.serverPort)
+    ) {
+      console.log("Server settings changed, reconnecting WebSocket...");
+      setupWebSocket();
+    }
   }
 });
 
@@ -242,34 +254,51 @@ function sendToBrowserConnector(logData) {
     );
   }
 
-  fetch("http://127.0.0.1:3025/extension-log", {
+  const serverUrl = `http://${settings.serverHost}:${settings.serverPort}/extension-log`;
+  console.log(`Sending log to ${serverUrl}`);
+
+  fetch(serverUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   })
     .then((response) => {
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error ${response.status}`);
       }
-      console.log("Successfully sent log to browser-connector");
       return response.json();
     })
     .then((data) => {
-      console.log("Browser connector response:", data);
+      console.log("Log sent successfully:", data);
     })
     .catch((error) => {
-      console.error("Failed to send log to browser-connector:", error);
+      console.error("Error sending log:", error);
     });
 }
 
-// Add function to wipe logs
+// Function to clear logs on the server
 function wipeLogs() {
-  fetch("http://127.0.0.1:3025/wipelogs", {
+  console.log("Wiping all logs...");
+
+  const serverUrl = `http://${settings.serverHost}:${settings.serverPort}/wipelogs`;
+  console.log(`Sending wipe request to ${serverUrl}`);
+
+  fetch(serverUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-  }).catch((error) => {
-    console.error("Failed to wipe logs:", error);
-  });
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+      return response.json();
+    })
+    .then((data) => {
+      console.log("Logs wiped successfully:", data);
+    })
+    .catch((error) => {
+      console.error("Error wiping logs:", error);
+    });
 }
 
 // Listen for page refreshes
@@ -529,7 +558,30 @@ function setupWebSocket() {
     ws.close();
   }
 
-  ws = new WebSocket("ws://localhost:3025/extension-ws");
+  const wsUrl = `ws://${settings.serverHost}:${settings.serverPort}/extension-ws`;
+  console.log(`Connecting to WebSocket at ${wsUrl}`);
+
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    console.log(`Chrome Extension: WebSocket connected to ${wsUrl}`);
+  };
+
+  ws.onerror = (error) => {
+    console.error(`Chrome Extension: WebSocket error for ${wsUrl}:`, error);
+  };
+
+  ws.onclose = (event) => {
+    console.log(`Chrome Extension: WebSocket closed for ${wsUrl}:`, event);
+
+    // Try to reconnect after delay
+    setTimeout(() => {
+      console.log(
+        `Chrome Extension: Attempting to reconnect WebSocket to ${wsUrl}`
+      );
+      setupWebSocket();
+    }, WS_RECONNECT_DELAY);
+  };
 
   ws.onmessage = async (event) => {
     try {
@@ -579,25 +631,6 @@ function setupWebSocket() {
         error
       );
     }
-  };
-
-  ws.onopen = () => {
-    console.log("Chrome Extension: WebSocket connected");
-    if (wsReconnectTimeout) {
-      clearTimeout(wsReconnectTimeout);
-      wsReconnectTimeout = null;
-    }
-  };
-
-  ws.onclose = () => {
-    console.log(
-      "Chrome Extension: WebSocket disconnected, attempting to reconnect..."
-    );
-    wsReconnectTimeout = setTimeout(setupWebSocket, WS_RECONNECT_DELAY);
-  };
-
-  ws.onerror = (error) => {
-    console.error("Chrome Extension: WebSocket error:", error);
   };
 }
 

@@ -7,6 +7,9 @@ let settings = {
   showResponseHeaders: false,
   maxLogSize: 20000,
   screenshotPath: "",
+  // Add server connection settings
+  serverHost: "localhost",
+  serverPort: 3025,
 };
 
 // Load saved settings on startup
@@ -31,6 +34,15 @@ const maxLogSizeInput = document.getElementById("max-log-size");
 const screenshotPathInput = document.getElementById("screenshot-path");
 const captureScreenshotButton = document.getElementById("capture-screenshot");
 
+// Server connection UI elements
+const serverHostInput = document.getElementById("server-host");
+const serverPortInput = document.getElementById("server-port");
+const discoverServerButton = document.getElementById("discover-server");
+const testConnectionButton = document.getElementById("test-connection");
+const connectionStatusDiv = document.getElementById("connection-status");
+const statusIcon = document.getElementById("status-icon");
+const statusText = document.getElementById("status-text");
+
 // Initialize collapsible advanced settings
 const advancedSettingsHeader = document.getElementById(
   "advanced-settings-header"
@@ -54,6 +66,8 @@ function updateUIFromSettings() {
   showResponseHeadersCheckbox.checked = settings.showResponseHeaders;
   maxLogSizeInput.value = settings.maxLogSize;
   screenshotPathInput.value = settings.screenshotPath;
+  serverHostInput.value = settings.serverHost;
+  serverPortInput.value = settings.serverPort;
 }
 
 // Save settings
@@ -102,37 +116,179 @@ screenshotPathInput.addEventListener("change", (e) => {
   saveSettings();
 });
 
-// Update screenshot capture functionality
+// Add event listeners for server settings
+serverHostInput.addEventListener("change", (e) => {
+  settings.serverHost = e.target.value;
+  saveSettings();
+});
+
+serverPortInput.addEventListener("change", (e) => {
+  settings.serverPort = parseInt(e.target.value, 10);
+  saveSettings();
+});
+
+// Test server connection
+testConnectionButton.addEventListener("click", async () => {
+  await testConnection(settings.serverHost, settings.serverPort);
+});
+
+// Function to test server connection
+async function testConnection(host, port) {
+  connectionStatusDiv.style.display = "block";
+  statusIcon.className = "status-indicator";
+  statusText.textContent = "Testing connection...";
+
+  try {
+    const response = await fetch(`http://${host}:${port}/.port`, {
+      signal: AbortSignal.timeout(5000), // 5 second timeout
+    });
+
+    if (response.ok) {
+      const responsePort = await response.text();
+      statusIcon.className = "status-indicator status-connected";
+      statusText.textContent = `Connected successfully to server at ${host}:${port}`;
+
+      // Update settings if different port was discovered
+      if (parseInt(responsePort, 10) !== port) {
+        console.log(`Detected different port: ${responsePort}`);
+        settings.serverPort = parseInt(responsePort, 10);
+        serverPortInput.value = settings.serverPort;
+        saveSettings();
+      }
+    } else {
+      statusIcon.className = "status-indicator status-disconnected";
+      statusText.textContent = `Connection failed: Server returned ${response.status}`;
+    }
+  } catch (error) {
+    statusIcon.className = "status-indicator status-disconnected";
+    statusText.textContent = `Connection failed: ${error.message}`;
+  }
+}
+
+// Server discovery function
+discoverServerButton.addEventListener("click", async () => {
+  connectionStatusDiv.style.display = "block";
+  statusIcon.className = "status-indicator";
+  statusText.textContent = "Discovering server...";
+
+  // Common IPs to try
+  const hosts = ["localhost", "127.0.0.1", "0.0.0.0"];
+
+  // Get local IP addresses on common networks
+  const commonLocalIps = ["192.168.0.", "192.168.1.", "10.0.0.", "10.0.1."];
+
+  // Add common local networks with last octet from 1 to 10
+  for (const prefix of commonLocalIps) {
+    for (let i = 1; i <= 10; i++) {
+      hosts.push(`${prefix}${i}`);
+    }
+  }
+
+  // Common ports to try
+  const ports = [3025, parseInt(settings.serverPort, 10)];
+
+  // Ensure the current port is in the list
+  if (!ports.includes(parseInt(settings.serverPort, 10))) {
+    ports.push(parseInt(settings.serverPort, 10));
+  }
+
+  // Create a progress indicator
+  let progress = 0;
+  const totalAttempts = hosts.length * ports.length;
+  statusText.textContent = `Discovering server... (0/${totalAttempts})`;
+
+  // Try each host:port combination
+  for (const host of hosts) {
+    for (const port of ports) {
+      try {
+        // Skip duplicates if current port is in the ports list multiple times
+        if (
+          port === parseInt(settings.serverPort, 10) &&
+          host === settings.serverHost
+        ) {
+          progress++;
+          statusText.textContent = `Discovering server... (${progress}/${totalAttempts})`;
+          continue;
+        }
+
+        // Update progress
+        progress++;
+        statusText.textContent = `Discovering server... (${progress}/${totalAttempts}) - Trying ${host}:${port}`;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1000); // 1 second timeout per attempt
+
+        const response = await fetch(`http://${host}:${port}/.port`, {
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const responsePort = await response.text();
+
+          // Update settings with discovered server
+          settings.serverHost = host;
+          settings.serverPort = parseInt(responsePort, 10);
+          serverHostInput.value = settings.serverHost;
+          serverPortInput.value = settings.serverPort;
+          saveSettings();
+
+          statusIcon.className = "status-indicator status-connected";
+          statusText.textContent = `Discovered server at ${host}:${responsePort}`;
+
+          // Stop searching once found
+          return;
+        }
+      } catch (error) {
+        // Ignore connection errors during discovery
+      }
+    }
+  }
+
+  // If we get here, no server was found
+  statusIcon.className = "status-indicator status-disconnected";
+  statusText.textContent =
+    "No server found. Please check server is running and try again.";
+});
+
+// Screenshot capture functionality
 captureScreenshotButton.addEventListener("click", () => {
   captureScreenshotButton.textContent = "Capturing...";
 
   // Send message to background script to capture screenshot
-  chrome.runtime.sendMessage({
-    type: "CAPTURE_SCREENSHOT",
-    tabId: chrome.devtools.inspectedWindow.tabId,
-    screenshotPath: settings.screenshotPath
-  }, (response) => {
-    console.log("Screenshot capture response:", response);
-    if (!response) {
-      captureScreenshotButton.textContent = "Failed to capture!";
-      console.error("Screenshot capture failed: No response received");
-    } else if (!response.success) {
-      captureScreenshotButton.textContent = "Failed to capture!";
-      console.error("Screenshot capture failed:", response.error);
-    } else {
-      captureScreenshotButton.textContent = `Captured: ${response.title}`;
-      console.log("Screenshot captured successfully:", response.path);
+  chrome.runtime.sendMessage(
+    {
+      type: "CAPTURE_SCREENSHOT",
+      tabId: chrome.devtools.inspectedWindow.tabId,
+      screenshotPath: settings.screenshotPath,
+    },
+    (response) => {
+      console.log("Screenshot capture response:", response);
+      if (!response) {
+        captureScreenshotButton.textContent = "Failed to capture!";
+        console.error("Screenshot capture failed: No response received");
+      } else if (!response.success) {
+        captureScreenshotButton.textContent = "Failed to capture!";
+        console.error("Screenshot capture failed:", response.error);
+      } else {
+        captureScreenshotButton.textContent = `Captured: ${response.title}`;
+        console.log("Screenshot captured successfully:", response.path);
+      }
+      setTimeout(() => {
+        captureScreenshotButton.textContent = "Capture Screenshot";
+      }, 2000);
     }
-    setTimeout(() => {
-      captureScreenshotButton.textContent = "Capture Screenshot";
-    }, 2000);
-  });
+  );
 });
 
 // Add wipe logs functionality
 const wipeLogsButton = document.getElementById("wipe-logs");
 wipeLogsButton.addEventListener("click", () => {
-  fetch("http://127.0.0.1:3025/wipelogs", {
+  const serverUrl = `http://${settings.serverHost}:${settings.serverPort}/wipelogs`;
+  console.log(`Sending wipe request to ${serverUrl}`);
+
+  fetch(serverUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   })
