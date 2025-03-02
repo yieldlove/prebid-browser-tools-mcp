@@ -161,9 +161,68 @@ interface ScreenshotCallback {
 
 const screenshotCallbacks = new Map<string, ScreenshotCallback>();
 
-const app = express();
-const PORT = parseInt(process.env.PORT || "3025", 10);
+// Function to get available port starting with the given port
+async function getAvailablePort(
+  startPort: number,
+  maxAttempts: number = 10
+): Promise<number> {
+  let currentPort = startPort;
+  let attempts = 0;
 
+  while (attempts < maxAttempts) {
+    try {
+      // Try to create a server on the current port
+      // We'll use a raw Node.js net server for just testing port availability
+      await new Promise<void>((resolve, reject) => {
+        const testServer = require("net").createServer();
+
+        // Handle errors (e.g., port in use)
+        testServer.once("error", (err: any) => {
+          if (err.code === "EADDRINUSE") {
+            console.log(`Port ${currentPort} is in use, trying next port...`);
+            currentPort++;
+            attempts++;
+            resolve(); // Continue to next iteration
+          } else {
+            reject(err); // Different error, propagate it
+          }
+        });
+
+        // If we can listen, the port is available
+        testServer.once("listening", () => {
+          // Make sure to close the server to release the port
+          testServer.close(() => {
+            console.log(`Found available port: ${currentPort}`);
+            resolve();
+          });
+        });
+
+        // Try to listen on the current port
+        testServer.listen(currentPort, currentSettings.serverHost);
+      });
+
+      // If we reach here without incrementing the port, it means the port is available
+      return currentPort;
+    } catch (error: any) {
+      console.error(`Error checking port ${currentPort}:`, error);
+      // For non-EADDRINUSE errors, try the next port
+      currentPort++;
+      attempts++;
+    }
+  }
+
+  // If we've exhausted all attempts, throw an error
+  throw new Error(
+    `Could not find an available port after ${maxAttempts} attempts starting from ${startPort}`
+  );
+}
+
+// Start with requested port and find an available one
+const REQUESTED_PORT = parseInt(process.env.PORT || "3025", 10);
+let PORT = REQUESTED_PORT;
+
+// Create application and initialize middleware
+const app = express();
 app.use(cors());
 // Increase JSON body parser limit to 50MB to handle large screenshots
 app.use(bodyParser.json({ limit: "50mb" }));
@@ -824,38 +883,88 @@ export class BrowserConnector {
   }
 }
 
-// Move the server creation before BrowserConnector instantiation
-const server = app.listen(PORT, currentSettings.serverHost, () => {
-  console.log(`\n=== Browser Tools Server Started ===`);
-  console.log(
-    `Aggregator listening on http://${currentSettings.serverHost}:${PORT}`
-  );
+// Use an async IIFE to allow for async/await in the initial setup
+(async () => {
+  try {
+    console.log(`Starting Browser Tools Server...`);
+    console.log(`Requested port: ${REQUESTED_PORT}`);
 
-  // Log all available network interfaces for easier discovery
-  const networkInterfaces = os.networkInterfaces();
-  console.log("\nAvailable on the following network addresses:");
+    // Find an available port
+    try {
+      PORT = await getAvailablePort(REQUESTED_PORT);
 
-  Object.keys(networkInterfaces).forEach((interfaceName) => {
-    const interfaces = networkInterfaces[interfaceName];
-    if (interfaces) {
-      interfaces.forEach((iface) => {
-        if (!iface.internal && iface.family === "IPv4") {
-          console.log(`  - http://${iface.address}:${PORT}`);
+      if (PORT !== REQUESTED_PORT) {
+        console.log(`\n====================================`);
+        console.log(`NOTICE: Requested port ${REQUESTED_PORT} was in use.`);
+        console.log(`Using port ${PORT} instead.`);
+        console.log(`====================================\n`);
+      }
+    } catch (portError) {
+      console.error(`Failed to find an available port:`, portError);
+      process.exit(1);
+    }
+
+    // Create the server with the available port
+    const server = app.listen(PORT, currentSettings.serverHost, () => {
+      console.log(`\n=== Browser Tools Server Started ===`);
+      console.log(
+        `Aggregator listening on http://${currentSettings.serverHost}:${PORT}`
+      );
+
+      if (PORT !== REQUESTED_PORT) {
+        console.log(
+          `NOTE: Using fallback port ${PORT} instead of requested port ${REQUESTED_PORT}`
+        );
+      }
+
+      // Log all available network interfaces for easier discovery
+      const networkInterfaces = os.networkInterfaces();
+      console.log("\nAvailable on the following network addresses:");
+
+      Object.keys(networkInterfaces).forEach((interfaceName) => {
+        const interfaces = networkInterfaces[interfaceName];
+        if (interfaces) {
+          interfaces.forEach((iface) => {
+            if (!iface.internal && iface.family === "IPv4") {
+              console.log(`  - http://${iface.address}:${PORT}`);
+            }
+          });
         }
       });
-    }
-  });
 
-  console.log(`\nFor local access use: http://localhost:${PORT}`);
-});
+      console.log(`\nFor local access use: http://localhost:${PORT}`);
+    });
 
-// Initialize the browser connector with the existing app AND server
-const browserConnector = new BrowserConnector(app, server);
+    // Handle server startup errors
+    server.on("error", (err: any) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `ERROR: Port ${PORT} is still in use, despite our checks!`
+        );
+        console.error(
+          `This might indicate another process started using this port after our check.`
+        );
+      } else {
+        console.error(`Server error:`, err);
+      }
+      process.exit(1);
+    });
 
-// Handle shutdown gracefully
-process.on("SIGINT", () => {
-  server.close(() => {
-    console.log("Server shut down");
-    process.exit(0);
-  });
+    // Initialize the browser connector with the existing app AND server
+    const browserConnector = new BrowserConnector(app, server);
+
+    // Handle shutdown gracefully
+    process.on("SIGINT", () => {
+      server.close(() => {
+        console.log("Server shut down");
+        process.exit(0);
+      });
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  }
+})().catch((err) => {
+  console.error("Unhandled error during server startup:", err);
+  process.exit(1);
 });

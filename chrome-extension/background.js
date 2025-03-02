@@ -65,6 +65,57 @@ async function validateServerIdentity(host, port) {
   }
 }
 
+// Listen for tab updates to detect page refreshes
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // Check if this is a page refresh (status becoming "complete")
+  if (changeInfo.status === "complete") {
+    retestConnectionOnRefresh(tabId);
+  }
+});
+
+// Function to retest connection when a page is refreshed
+async function retestConnectionOnRefresh(tabId) {
+  console.log(`Page refreshed in tab ${tabId}, retesting connection...`);
+
+  // Get the saved settings
+  chrome.storage.local.get(["browserConnectorSettings"], async (result) => {
+    const settings = result.browserConnectorSettings || {
+      serverHost: "localhost",
+      serverPort: 3025,
+    };
+
+    // Test the connection with the last known host and port
+    const isConnected = await validateServerIdentity(
+      settings.serverHost,
+      settings.serverPort
+    );
+
+    // Notify all devtools instances about the connection status
+    chrome.runtime.sendMessage({
+      type: "CONNECTION_STATUS_UPDATE",
+      isConnected: isConnected,
+      tabId: tabId,
+    });
+
+    // Always notify for page refresh, whether connected or not
+    // This ensures any ongoing discovery is cancelled and restarted
+    chrome.runtime.sendMessage({
+      type: "INITIATE_AUTO_DISCOVERY",
+      reason: "page_refresh",
+      tabId: tabId,
+      forceRestart: true, // Add a flag to indicate this should force restart any ongoing processes
+    });
+
+    if (!isConnected) {
+      console.log(
+        "Connection test failed after page refresh, initiating auto-discovery..."
+      );
+    } else {
+      console.log("Connection test successful after page refresh");
+    }
+  });
+}
+
 // Function to capture and send screenshot
 function captureAndSendScreenshot(message, settings, sendResponse) {
   // Get the inspected window's tab

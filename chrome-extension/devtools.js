@@ -42,6 +42,71 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       setupWebSocket();
     }
   }
+
+  // Handle connection status updates from page refreshes
+  if (message.type === "CONNECTION_STATUS_UPDATE") {
+    console.log(
+      `DevTools received connection status update: ${
+        message.isConnected ? "Connected" : "Disconnected"
+      }`
+    );
+
+    // If connection is lost, try to reestablish WebSocket only if we had a previous connection
+    if (!message.isConnected && ws) {
+      console.log(
+        "Connection lost after page refresh, will attempt to reconnect WebSocket"
+      );
+
+      // Only reconnect if we actually have a WebSocket that might be stale
+      if (
+        ws &&
+        (ws.readyState === WebSocket.CLOSED ||
+          ws.readyState === WebSocket.CLOSING)
+      ) {
+        console.log("WebSocket is already closed or closing, will reconnect");
+        setupWebSocket();
+      }
+    }
+  }
+
+  // Handle auto-discovery requests after page refreshes
+  if (message.type === "INITIATE_AUTO_DISCOVERY") {
+    console.log(
+      `DevTools initiating WebSocket reconnect after page refresh (reason: ${message.reason})`
+    );
+
+    // For page refreshes with forceRestart, we should always reconnect if our current connection is not working
+    if (
+      (message.reason === "page_refresh" || message.forceRestart === true) &&
+      (!ws || ws.readyState !== WebSocket.OPEN)
+    ) {
+      console.log(
+        "Page refreshed and WebSocket not open - forcing reconnection"
+      );
+
+      // Close existing WebSocket if any
+      if (ws) {
+        console.log("Closing existing WebSocket due to page refresh");
+        intentionalClosure = true; // Mark as intentional to prevent auto-reconnect
+        try {
+          ws.close();
+        } catch (e) {
+          console.error("Error closing WebSocket:", e);
+        }
+        ws = null;
+        intentionalClosure = false; // Reset flag
+      }
+
+      // Clear any pending reconnect timeouts
+      if (wsReconnectTimeout) {
+        clearTimeout(wsReconnectTimeout);
+        wsReconnectTimeout = null;
+      }
+
+      // Try to reestablish the WebSocket connection
+      setupWebSocket();
+    }
+  }
 });
 
 // Utility to recursively truncate strings in any data structure
@@ -284,33 +349,80 @@ async function sendToBrowserConnector(logData) {
     });
 }
 
-// Validate server identity before connecting
+// Validate server identity
 async function validateServerIdentity() {
   try {
-    const serverUrl = `http://${settings.serverHost}:${settings.serverPort}/.identity`;
+    console.log(
+      `Validating server identity at ${settings.serverHost}:${settings.serverPort}...`
+    );
 
-    // Check if the server is our browser-tools-server
-    const response = await fetch(serverUrl, {
-      signal: AbortSignal.timeout(2000), // 2 second timeout
-    });
+    // Use fetch with a timeout to prevent long-hanging requests
+    const response = await fetch(
+      `http://${settings.serverHost}:${settings.serverPort}/.identity`,
+      {
+        signal: AbortSignal.timeout(3000), // 3 second timeout
+      }
+    );
 
     if (!response.ok) {
-      console.error(`Invalid server response: ${response.status}`);
+      console.error(
+        `Server identity validation failed: HTTP ${response.status}`
+      );
+
+      // Notify about the connection failure
+      chrome.runtime.sendMessage({
+        type: "SERVER_VALIDATION_FAILED",
+        reason: "http_error",
+        status: response.status,
+        serverHost: settings.serverHost,
+        serverPort: settings.serverPort,
+      });
+
       return false;
     }
 
     const identity = await response.json();
 
-    // Validate the server signature
+    // Validate signature
     if (identity.signature !== "mcp-browser-connector-24x7") {
-      console.error("Invalid server signature - not the browser tools server");
+      console.error("Server identity validation failed: Invalid signature");
+
+      // Notify about the invalid signature
+      chrome.runtime.sendMessage({
+        type: "SERVER_VALIDATION_FAILED",
+        reason: "invalid_signature",
+        serverHost: settings.serverHost,
+        serverPort: settings.serverPort,
+      });
+
       return false;
     }
 
-    // If reached here, the server is valid
+    console.log(
+      `Server identity confirmed: ${identity.name} v${identity.version}`
+    );
+
+    // Notify about successful validation
+    chrome.runtime.sendMessage({
+      type: "SERVER_VALIDATION_SUCCESS",
+      serverInfo: identity,
+      serverHost: settings.serverHost,
+      serverPort: settings.serverPort,
+    });
+
     return true;
   } catch (error) {
-    console.error("Error validating server identity:", error);
+    console.error("Server identity validation failed:", error);
+
+    // Notify about the connection error
+    chrome.runtime.sendMessage({
+      type: "SERVER_VALIDATION_FAILED",
+      reason: "connection_error",
+      error: error.message,
+      serverHost: settings.serverHost,
+      serverPort: settings.serverPort,
+    });
+
     return false;
   }
 }
@@ -529,14 +641,31 @@ chrome.devtools.panels.create("BrowserToolsMCP", "", "panel.html", (panel) => {
   });
 });
 
-// Clean up when DevTools window is closed
+// Clean up when DevTools closes
 window.addEventListener("unload", () => {
+  // Detach debugger
   detachDebugger();
+
+  // Set intentional closure flag before closing
+  intentionalClosure = true;
+
   if (ws) {
-    ws.close();
+    try {
+      ws.close();
+    } catch (e) {
+      console.error("Error closing WebSocket during unload:", e);
+    }
+    ws = null;
   }
+
   if (wsReconnectTimeout) {
     clearTimeout(wsReconnectTimeout);
+    wsReconnectTimeout = null;
+  }
+
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
   }
 });
 
@@ -590,97 +719,197 @@ chrome.devtools.panels.elements.onSelectionChanged.addListener(() => {
 // WebSocket connection management
 let ws = null;
 let wsReconnectTimeout = null;
+let heartbeatInterval = null;
 const WS_RECONNECT_DELAY = 5000; // 5 seconds
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+// Add a flag to track if we need to reconnect after identity validation
+let reconnectAfterValidation = false;
+// Track if we're intentionally closing the connection
+let intentionalClosure = false;
+
+// Function to send a heartbeat to keep the WebSocket connection alive
+function sendHeartbeat() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    console.log("Chrome Extension: Sending WebSocket heartbeat");
+    ws.send(JSON.stringify({ type: "heartbeat" }));
+  }
+}
 
 async function setupWebSocket() {
+  // Clear any pending timeouts
+  if (wsReconnectTimeout) {
+    clearTimeout(wsReconnectTimeout);
+    wsReconnectTimeout = null;
+  }
+
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+
+  // Close existing WebSocket if any
   if (ws) {
-    ws.close();
+    // Set flag to indicate this is an intentional closure
+    intentionalClosure = true;
+    try {
+      ws.close();
+    } catch (e) {
+      console.error("Error closing existing WebSocket:", e);
+    }
+    ws = null;
+    intentionalClosure = false; // Reset flag
   }
 
   // Validate server identity before connecting
-  if (!(await validateServerIdentity())) {
+  console.log("Validating server identity before WebSocket connection...");
+  const isValid = await validateServerIdentity();
+
+  if (!isValid) {
     console.error(
       "Cannot establish WebSocket: Not connected to a valid browser tools server"
     );
+    // Set flag to indicate we need to reconnect after a page refresh check
+    reconnectAfterValidation = true;
+
     // Try again after delay
-    setTimeout(setupWebSocket, WS_RECONNECT_DELAY);
+    wsReconnectTimeout = setTimeout(() => {
+      console.log("Attempting to reconnect WebSocket after validation failure");
+      setupWebSocket();
+    }, WS_RECONNECT_DELAY);
     return;
   }
+
+  // Reset reconnect flag since validation succeeded
+  reconnectAfterValidation = false;
 
   const wsUrl = `ws://${settings.serverHost}:${settings.serverPort}/extension-ws`;
   console.log(`Connecting to WebSocket at ${wsUrl}`);
 
-  ws = new WebSocket(wsUrl);
+  try {
+    ws = new WebSocket(wsUrl);
 
-  ws.onopen = () => {
-    console.log(`Chrome Extension: WebSocket connected to ${wsUrl}`);
-  };
+    ws.onopen = () => {
+      console.log(`Chrome Extension: WebSocket connected to ${wsUrl}`);
 
-  ws.onerror = (error) => {
-    console.error(`Chrome Extension: WebSocket error for ${wsUrl}:`, error);
-  };
+      // Start heartbeat to keep connection alive
+      heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
 
-  ws.onclose = (event) => {
-    console.log(`Chrome Extension: WebSocket closed for ${wsUrl}:`, event);
+      // Notify that connection is successful
+      chrome.runtime.sendMessage({
+        type: "WEBSOCKET_CONNECTED",
+        serverHost: settings.serverHost,
+        serverPort: settings.serverPort,
+      });
+    };
 
-    // Try to reconnect after delay
-    setTimeout(() => {
-      console.log(
-        `Chrome Extension: Attempting to reconnect WebSocket to ${wsUrl}`
-      );
-      setupWebSocket();
-    }, WS_RECONNECT_DELAY);
-  };
+    ws.onerror = (error) => {
+      console.error(`Chrome Extension: WebSocket error for ${wsUrl}:`, error);
+    };
 
-  ws.onmessage = async (event) => {
-    try {
-      const message = JSON.parse(event.data);
-      console.log("Chrome Extension: Received WebSocket message:", message);
+    ws.onclose = (event) => {
+      console.log(`Chrome Extension: WebSocket closed for ${wsUrl}:`, event);
 
-      if (message.type === "take-screenshot") {
-        console.log("Chrome Extension: Taking screenshot...");
-        // Capture screenshot of the current tab
-        chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
-          if (chrome.runtime.lastError) {
-            console.error(
-              "Chrome Extension: Screenshot capture failed:",
-              chrome.runtime.lastError
-            );
-            ws.send(
-              JSON.stringify({
-                type: "screenshot-error",
-                error: chrome.runtime.lastError.message,
-                requestId: message.requestId,
-              })
-            );
-            return;
-          }
-
-          console.log("Chrome Extension: Screenshot captured successfully");
-          // Just send the screenshot data, let the server handle paths
-          const response = {
-            type: "screenshot-data",
-            data: dataUrl,
-            requestId: message.requestId,
-            // Only include path if it's configured in settings
-            ...(settings.screenshotPath && { path: settings.screenshotPath }),
-          };
-
-          console.log("Chrome Extension: Sending screenshot data response", {
-            ...response,
-            data: "[base64 data]",
-          });
-
-          ws.send(JSON.stringify(response));
-        });
+      // Stop heartbeat
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
       }
-    } catch (error) {
-      console.error(
-        "Chrome Extension: Error processing WebSocket message:",
-        error
-      );
-    }
-  };
+
+      // Don't reconnect if this was an intentional closure
+      if (intentionalClosure) {
+        console.log(
+          "Chrome Extension: Intentional WebSocket closure, not reconnecting"
+        );
+        return;
+      }
+
+      // Only attempt to reconnect if the closure wasn't intentional
+      // Code 1000 (Normal Closure) and 1001 (Going Away) are normal closures
+      // Code 1005 often happens with clean closures in Chrome
+      const isAbnormalClosure = !(event.code === 1000 || event.code === 1001);
+
+      // Check if this was an abnormal closure or if we need to reconnect after validation
+      if (isAbnormalClosure || reconnectAfterValidation) {
+        console.log(
+          `Chrome Extension: Will attempt to reconnect WebSocket (closure code: ${event.code})`
+        );
+
+        // Try to reconnect after delay
+        wsReconnectTimeout = setTimeout(() => {
+          console.log(
+            `Chrome Extension: Attempting to reconnect WebSocket to ${wsUrl}`
+          );
+          setupWebSocket();
+        }, WS_RECONNECT_DELAY);
+      } else {
+        console.log(
+          `Chrome Extension: Normal WebSocket closure, not reconnecting automatically`
+        );
+      }
+    };
+
+    ws.onmessage = async (event) => {
+      try {
+        const message = JSON.parse(event.data);
+
+        // Don't log heartbeat responses to reduce noise
+        if (message.type !== "heartbeat-response") {
+          console.log("Chrome Extension: Received WebSocket message:", message);
+        }
+
+        if (message.type === "heartbeat-response") {
+          // Just a heartbeat response, no action needed
+          // Uncomment the next line for debug purposes only
+          // console.log("Chrome Extension: Received heartbeat response");
+        } else if (message.type === "take-screenshot") {
+          console.log("Chrome Extension: Taking screenshot...");
+          // Capture screenshot of the current tab
+          chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
+            if (chrome.runtime.lastError) {
+              console.error(
+                "Chrome Extension: Screenshot capture failed:",
+                chrome.runtime.lastError
+              );
+              ws.send(
+                JSON.stringify({
+                  type: "screenshot-error",
+                  error: chrome.runtime.lastError.message,
+                  requestId: message.requestId,
+                })
+              );
+              return;
+            }
+
+            console.log("Chrome Extension: Screenshot captured successfully");
+            // Just send the screenshot data, let the server handle paths
+            const response = {
+              type: "screenshot-data",
+              data: dataUrl,
+              requestId: message.requestId,
+              // Only include path if it's configured in settings
+              ...(settings.screenshotPath && { path: settings.screenshotPath }),
+            };
+
+            console.log("Chrome Extension: Sending screenshot data response", {
+              ...response,
+              data: "[base64 data]",
+            });
+
+            ws.send(JSON.stringify(response));
+          });
+        }
+      } catch (error) {
+        console.error(
+          "Chrome Extension: Error processing WebSocket message:",
+          error
+        );
+      }
+    };
+  } catch (error) {
+    console.error("Error creating WebSocket:", error);
+    // Try again after delay
+    wsReconnectTimeout = setTimeout(setupWebSocket, WS_RECONNECT_DELAY);
+  }
 }
 
 // Initialize WebSocket connection when DevTools opens
