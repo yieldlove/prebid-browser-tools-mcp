@@ -17,6 +17,117 @@ import {
   AuditCategory,
   LighthouseReport,
 } from "./lighthouse/index.js";
+import * as net from "net";
+
+/**
+ * Converts a file path to the appropriate format for the current platform
+ * Handles Windows, WSL, macOS and Linux path formats
+ *
+ * @param inputPath - The path to convert
+ * @returns The converted path appropriate for the current platform
+ */
+function convertPathForCurrentPlatform(inputPath: string): string {
+  const platform = os.platform();
+
+  // If no path provided, return as is
+  if (!inputPath) return inputPath;
+
+  console.log(`Converting path "${inputPath}" for platform: ${platform}`);
+
+  // Windows-specific conversion
+  if (platform === "win32") {
+    // Convert forward slashes to backslashes
+    return inputPath.replace(/\//g, "\\");
+  }
+
+  // Linux/Mac-specific conversion
+  if (platform === "linux" || platform === "darwin") {
+    // Check if this is a Windows UNC path (starts with \\)
+    if (inputPath.startsWith("\\\\") || inputPath.includes("\\")) {
+      // Check if this is a WSL path (contains wsl.localhost or wsl$)
+      if (inputPath.includes("wsl.localhost") || inputPath.includes("wsl$")) {
+        // Extract the path after the distribution name
+        // Handle both \\wsl.localhost\Ubuntu\path and \\wsl$\Ubuntu\path formats
+        const parts = inputPath.split("\\").filter((part) => part.length > 0);
+        console.log("Path parts:", parts);
+
+        // Find the index after the distribution name
+        const distNames = [
+          "Ubuntu",
+          "Debian",
+          "kali",
+          "openSUSE",
+          "SLES",
+          "Fedora",
+        ];
+
+        // Find the distribution name in the path
+        let distIndex = -1;
+        for (const dist of distNames) {
+          const index = parts.findIndex(
+            (part) => part === dist || part.toLowerCase() === dist.toLowerCase()
+          );
+          if (index !== -1) {
+            distIndex = index;
+            break;
+          }
+        }
+
+        if (distIndex !== -1 && distIndex + 1 < parts.length) {
+          // Reconstruct the path as a native Linux path
+          const linuxPath = "/" + parts.slice(distIndex + 1).join("/");
+          console.log(
+            `Converted Windows WSL path "${inputPath}" to Linux path "${linuxPath}"`
+          );
+          return linuxPath;
+        }
+
+        // If we couldn't find a distribution name but it's clearly a WSL path,
+        // try to extract everything after wsl.localhost or wsl$
+        const wslIndex = parts.findIndex(
+          (part) =>
+            part === "wsl.localhost" ||
+            part === "wsl$" ||
+            part.toLowerCase() === "wsl.localhost" ||
+            part.toLowerCase() === "wsl$"
+        );
+
+        if (wslIndex !== -1 && wslIndex + 2 < parts.length) {
+          // Skip the WSL prefix and distribution name
+          const linuxPath = "/" + parts.slice(wslIndex + 2).join("/");
+          console.log(
+            `Converted Windows WSL path "${inputPath}" to Linux path "${linuxPath}"`
+          );
+          return linuxPath;
+        }
+      }
+
+      // For non-WSL Windows paths, just normalize the slashes
+      const normalizedPath = inputPath
+        .replace(/\\\\/g, "/")
+        .replace(/\\/g, "/");
+      console.log(
+        `Converted Windows UNC path "${inputPath}" to "${normalizedPath}"`
+      );
+      return normalizedPath;
+    }
+
+    // Handle Windows drive letters (e.g., C:\path\to\file)
+    if (/^[A-Z]:\\/i.test(inputPath)) {
+      // Convert Windows drive path to Linux/Mac compatible path
+      const normalizedPath = inputPath
+        .replace(/^[A-Z]:\\/i, "/")
+        .replace(/\\/g, "/");
+      console.log(
+        `Converted Windows drive path "${inputPath}" to "${normalizedPath}"`
+      );
+      return normalizedPath;
+    }
+  }
+
+  // Return the original path if no conversion was needed or possible
+  return inputPath;
+}
 
 // Function to get default downloads folder
 function getDefaultDownloadsFolder(): string {
@@ -36,6 +147,9 @@ const allXhr: any[] = [];
 // Store the current URL from the extension
 let currentUrl: string = "";
 
+// Store the current tab ID from the extension
+let currentTabId: string | number | null = null;
+
 // Add settings state
 let currentSettings = {
   logLimit: 50,
@@ -46,6 +160,8 @@ let currentSettings = {
   stringSizeLimit: 500,
   maxLogSize: 20000,
   screenshotPath: getDefaultDownloadsFolder(),
+  // Add server host configuration
+  serverHost: process.env.SERVER_HOST || "0.0.0.0", // Default to all interfaces
 };
 
 // Add new storage for selected element
@@ -59,9 +175,68 @@ interface ScreenshotCallback {
 
 const screenshotCallbacks = new Map<string, ScreenshotCallback>();
 
-const app = express();
-const PORT = 3025;
+// Function to get available port starting with the given port
+async function getAvailablePort(
+  startPort: number,
+  maxAttempts: number = 10
+): Promise<number> {
+  let currentPort = startPort;
+  let attempts = 0;
 
+  while (attempts < maxAttempts) {
+    try {
+      // Try to create a server on the current port
+      // We'll use a raw Node.js net server for just testing port availability
+      await new Promise<void>((resolve, reject) => {
+        const testServer = net.createServer();
+
+        // Handle errors (e.g., port in use)
+        testServer.once("error", (err: any) => {
+          if (err.code === "EADDRINUSE") {
+            console.log(`Port ${currentPort} is in use, trying next port...`);
+            currentPort++;
+            attempts++;
+            resolve(); // Continue to next iteration
+          } else {
+            reject(err); // Different error, propagate it
+          }
+        });
+
+        // If we can listen, the port is available
+        testServer.once("listening", () => {
+          // Make sure to close the server to release the port
+          testServer.close(() => {
+            console.log(`Found available port: ${currentPort}`);
+            resolve();
+          });
+        });
+
+        // Try to listen on the current port
+        testServer.listen(currentPort, currentSettings.serverHost);
+      });
+
+      // If we reach here without incrementing the port, it means the port is available
+      return currentPort;
+    } catch (error: any) {
+      console.error(`Error checking port ${currentPort}:`, error);
+      // For non-EADDRINUSE errors, try the next port
+      currentPort++;
+      attempts++;
+    }
+  }
+
+  // If we've exhausted all attempts, throw an error
+  throw new Error(
+    `Could not find an available port after ${maxAttempts} attempts starting from ${startPort}`
+  );
+}
+
+// Start with requested port and find an available one
+const REQUESTED_PORT = parseInt(process.env.PORT || "3025", 10);
+let PORT = REQUESTED_PORT;
+
+// Create application and initialize middleware
+const app = express();
 app.use(cors());
 // Increase JSON body parser limit to 50MB to handle large screenshots
 app.use(bodyParser.json({ limit: "50mb" }));
@@ -194,6 +369,13 @@ app.post("/extension-log", (req, res) => {
       // as the extension may send navigation events through either channel
       console.log("Received page navigation event with URL:", data.url);
       currentUrl = data.url;
+
+      // Also update the tab ID if provided
+      if (data.tabId) {
+        console.log("Updating tab ID from page navigation event:", data.tabId);
+        currentTabId = data.tabId;
+      }
+
       console.log("Updated current URL:", currentUrl);
       break;
     case "console-log":
@@ -324,6 +506,16 @@ app.get("/.port", (req, res) => {
   res.send(PORT.toString());
 });
 
+// Add new identity endpoint with a unique signature
+app.get("/.identity", (req, res) => {
+  res.json({
+    port: PORT,
+    name: "browser-tools-server",
+    version: "1.1.0",
+    signature: "mcp-browser-connector-24x7",
+  });
+});
+
 // Add function to clear all logs
 function clearAllLogs() {
   console.log("Wiping all logs...");
@@ -344,12 +536,43 @@ app.post("/wipelogs", (req, res) => {
 
 // Add endpoint for the extension to report the current URL
 app.post("/current-url", (req, res) => {
-  console.log("Received current URL update:", req.body);
+  console.log(
+    "Received current URL update request:",
+    JSON.stringify(req.body, null, 2)
+  );
 
   if (req.body && req.body.url) {
+    const oldUrl = currentUrl;
     currentUrl = req.body.url;
-    console.log("Updated current URL via dedicated endpoint:", currentUrl);
-    res.json({ status: "ok", url: currentUrl });
+
+    // Update the current tab ID if provided
+    if (req.body.tabId) {
+      const oldTabId = currentTabId;
+      currentTabId = req.body.tabId;
+      console.log(`Updated current tab ID: ${oldTabId} -> ${currentTabId}`);
+    }
+
+    // Log the source of the update if provided
+    const source = req.body.source || "unknown";
+    const tabId = req.body.tabId || "unknown";
+    const timestamp = req.body.timestamp
+      ? new Date(req.body.timestamp).toISOString()
+      : "unknown";
+
+    console.log(
+      `Updated current URL via dedicated endpoint: ${oldUrl} -> ${currentUrl}`
+    );
+    console.log(
+      `URL update details: source=${source}, tabId=${tabId}, timestamp=${timestamp}`
+    );
+
+    res.json({
+      status: "ok",
+      url: currentUrl,
+      tabId: currentTabId,
+      previousUrl: oldUrl,
+      updated: oldUrl !== currentUrl,
+    });
   } else {
     console.log("No URL provided in current-url request");
     res.status(400).json({ status: "error", message: "No URL provided" });
@@ -427,7 +650,7 @@ export class BrowserConnector {
       console.log("Chrome extension connected via WebSocket");
       this.activeConnection = ws;
 
-      ws.on("message", (message) => {
+      ws.on("message", (message: string | Buffer | ArrayBuffer | Buffer[]) => {
         try {
           const data = JSON.parse(message.toString());
           // Log message without the base64 data
@@ -440,6 +663,15 @@ export class BrowserConnector {
           if (data.type === "current-url-response" && data.url) {
             console.log("Received current URL from browser:", data.url);
             currentUrl = data.url;
+
+            // Also update the tab ID if provided
+            if (data.tabId) {
+              console.log(
+                "Updating tab ID from WebSocket message:",
+                data.tabId
+              );
+              currentTabId = data.tabId;
+            }
 
             // Call the callback if exists
             if (
@@ -457,6 +689,15 @@ export class BrowserConnector {
           if (data.type === "page-navigated" && data.url) {
             console.log("Page navigated to:", data.url);
             currentUrl = data.url;
+
+            // Also update the tab ID if provided
+            if (data.tabId) {
+              console.log(
+                "Updating tab ID from page navigation event:",
+                data.tabId
+              );
+              currentTabId = data.tabId;
+            }
           }
           // Handle screenshot response
           if (data.type === "screenshot-data" && data.data) {
@@ -564,7 +805,9 @@ export class BrowserConnector {
     try {
       const result = await new Promise((resolve, reject) => {
         // Set up one-time message handler for this screenshot request
-        const messageHandler = (message: WebSocket.Data) => {
+        const messageHandler = (
+          message: string | Buffer | ArrayBuffer | Buffer[]
+        ) => {
           try {
             const response: ScreenshotMessage = JSON.parse(message.toString());
 
@@ -632,59 +875,24 @@ export class BrowserConnector {
     }
   }
 
-  // Method to request the current URL from the browser
-  private async requestCurrentUrl(): Promise<string | null> {
-    if (this.activeConnection) {
-      console.log("Requesting current URL from browser via WebSocket...");
-      try {
-        const requestId = Date.now().toString();
+  // Updated method to get URL for audits with improved connection tracking
+  private async getUrlForAudit(): Promise<string | null> {
+    try {
+      console.log("getUrlForAudit called");
 
-        // Create a promise that will resolve when we get the URL
-        const urlPromise = new Promise<string>((resolve, reject) => {
-          // Store callback in map
-          this.urlRequestCallbacks.set(requestId, resolve);
-
-          // Set a timeout to reject the promise if we don't get a response
-          setTimeout(() => {
-            if (this.urlRequestCallbacks.has(requestId)) {
-              console.log("URL request timed out");
-              this.urlRequestCallbacks.delete(requestId);
-              reject(new Error("URL request timed out"));
-            }
-          }, 5000);
-        });
-
-        // Send the request to the browser
-        this.activeConnection.send(
-          JSON.stringify({
-            type: "get-current-url",
-            requestId,
-          })
-        );
-
-        // Wait for the response
-        const url = await urlPromise;
-        return url;
-      } catch (error) {
-        console.error("Error requesting URL from browser:", error);
-        // Fall back to stored URL if available
-        if (currentUrl) {
-          console.log("Falling back to stored URL:", currentUrl);
-          return currentUrl;
-        }
-        return null;
+      // Use the stored URL if available as fallback
+      if (currentUrl) {
+        // Store the URL but don't log it yet - we'll log it when we actually use it
+        return currentUrl;
       }
-    } else if (currentUrl) {
-      // If no active connection but we have a stored URL, use it as fallback
-      console.log(
-        "No active connection, using stored URL as fallback:",
-        currentUrl
-      );
-      return currentUrl;
-    }
 
-    console.log("No active connection and no stored URL");
-    return null;
+      // If no URL is available, return null to trigger an error
+      console.log("No URL available for audit, returning null");
+      return null;
+    } catch (error) {
+      console.error("Error in getUrlForAudit:", error);
+      return null; // Return null to trigger an error
+    }
   }
 
   // Public method to check if there's an active connection
@@ -757,29 +965,62 @@ export class BrowserConnector {
       console.log("Browser Connector: Received screenshot data, saving...");
       console.log("Browser Connector: Custom path from extension:", customPath);
 
-      // Determine target path
-      const targetPath =
-        customPath ||
-        currentSettings.screenshotPath ||
-        getDefaultDownloadsFolder();
+      // Always prioritize the path from the Chrome extension
+      let targetPath = customPath;
+
+      // If no path provided by extension, fall back to defaults
+      if (!targetPath) {
+        targetPath =
+          currentSettings.screenshotPath || getDefaultDownloadsFolder();
+      }
+
+      // Convert the path for the current platform
+      targetPath = convertPathForCurrentPlatform(targetPath);
+
       console.log(`Browser Connector: Using path: ${targetPath}`);
 
       if (!base64Data) {
         throw new Error("No screenshot data received from Chrome extension");
       }
 
-      fs.mkdirSync(targetPath, { recursive: true });
+      try {
+        fs.mkdirSync(targetPath, { recursive: true });
+        console.log(`Browser Connector: Created directory: ${targetPath}`);
+      } catch (err) {
+        console.error(
+          `Browser Connector: Error creating directory: ${targetPath}`,
+          err
+        );
+        throw new Error(
+          `Failed to create screenshot directory: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const filename = `screenshot-${timestamp}.png`;
       const fullPath = path.join(targetPath, filename);
+      console.log(`Browser Connector: Full screenshot path: ${fullPath}`);
 
       // Remove the data:image/png;base64, prefix if present
       const cleanBase64 = base64Data.replace(/^data:image\/png;base64,/, "");
 
       // Save the file
-      fs.writeFileSync(fullPath, cleanBase64, "base64");
-      console.log(`Browser Connector: Screenshot saved to: ${fullPath}`);
+      try {
+        fs.writeFileSync(fullPath, cleanBase64, "base64");
+        console.log(`Browser Connector: Screenshot saved to: ${fullPath}`);
+      } catch (err) {
+        console.error(
+          `Browser Connector: Error saving screenshot to: ${fullPath}`,
+          err
+        );
+        throw new Error(
+          `Failed to save screenshot: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
 
       res.json({
         path: fullPath,
@@ -796,76 +1037,6 @@ export class BrowserConnector {
         error: errorMessage,
       });
     }
-  }
-
-  // Add a helper method to get the URL for audits
-  private async getUrlForAudit(): Promise<string | null> {
-    // Wait for WebSocket connection if not already connected
-    if (!this.activeConnection) {
-      console.log("No active WebSocket connection, waiting for connection...");
-      try {
-        await this.waitForConnection(15000); // Wait up to 15 seconds for connection
-        console.log("WebSocket connection established");
-      } catch (error) {
-        console.error("Timed out waiting for WebSocket connection");
-      }
-    }
-    console.log("Attempting to get current URL from browser extension");
-    const browserUrl = await this.requestCurrentUrl();
-    if (browserUrl) {
-      try {
-        // Validate URL format
-        new URL(browserUrl);
-        return browserUrl;
-      } catch (e) {
-        console.error(`Invalid URL format from browser: ${browserUrl}`);
-        // Continue to next option
-      }
-    }
-
-    // Fallback: Use stored URL
-    if (currentUrl) {
-      try {
-        // Validate URL format
-        new URL(currentUrl);
-        console.log(`Using stored URL as fallback: ${currentUrl}`);
-        return currentUrl;
-      } catch (e) {
-        console.error(`Invalid stored URL format: ${currentUrl}`);
-        // Continue to next option
-      }
-    }
-
-    // Default fallback
-    console.error("No valid URL available for audit, using about:blank");
-    return "about:blank";
-  }
-
-  // Method to wait for WebSocket connection, we need this to ensure the browser extension
-  // is connected before we try to get the current URL
-  private waitForConnection(timeout: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // If already connected, resolve immediately
-      if (this.activeConnection) {
-        resolve();
-        return;
-      }
-
-      // Set up a listener for connection
-      const connectionListener = (ws: WebSocket) => {
-        this.wss.off("connection", connectionListener);
-        resolve();
-      };
-
-      // Listen for connection event
-      this.wss.on("connection", connectionListener);
-
-      // Set timeout
-      const timeoutId = setTimeout(() => {
-        this.wss.off("connection", connectionListener);
-        reject(new Error("Connection timeout"));
-      }, timeout);
-    });
   }
 
   // Sets up the accessibility audit endpoint
@@ -902,6 +1073,14 @@ export class BrowserConnector {
     endpoint: string,
     auditFunction: (url: string) => Promise<LighthouseReport>
   ) {
+    // Add server identity validation endpoint
+    this.app.get("/.identity", (req, res) => {
+      res.json({
+        signature: "mcp-browser-connector-24x7",
+        version: "1.1.1",
+      });
+    });
+
     this.app.post(endpoint, async (req: any, res: any) => {
       try {
         console.log(`${auditType} audit request received`);
@@ -916,6 +1095,14 @@ export class BrowserConnector {
           });
         }
 
+        // If we're using the stored URL (not from request body), log it now
+        if (!req.body?.url && url === currentUrl) {
+          console.log(
+            `Using stored URL as fallback for ${auditType} audit:`,
+            url
+          );
+        }
+
         // Check if we're using the default URL
         if (url === "about:blank") {
           console.log(`Cannot run ${auditType} audit on about:blank`);
@@ -923,6 +1110,8 @@ export class BrowserConnector {
             error: `Cannot run ${auditType} audit on about:blank`,
           });
         }
+
+        console.log(`Preparing to run ${auditType} audit for: ${url}`);
 
         // Run the audit using the provided function
         try {
@@ -953,18 +1142,88 @@ export class BrowserConnector {
   }
 }
 
-// Move the server creation before BrowserConnector instantiation
-const server = app.listen(PORT, () => {
-  console.log(`Aggregator listening on http://127.0.0.1:${PORT}`);
-});
+// Use an async IIFE to allow for async/await in the initial setup
+(async () => {
+  try {
+    console.log(`Starting Browser Tools Server...`);
+    console.log(`Requested port: ${REQUESTED_PORT}`);
 
-// Initialize the browser connector with the existing app AND server
-const browserConnector = new BrowserConnector(app, server);
+    // Find an available port
+    try {
+      PORT = await getAvailablePort(REQUESTED_PORT);
 
-// Handle shutdown gracefully
-process.on("SIGINT", () => {
-  server.close(() => {
-    console.log("Server shut down");
-    process.exit(0);
-  });
+      if (PORT !== REQUESTED_PORT) {
+        console.log(`\n====================================`);
+        console.log(`NOTICE: Requested port ${REQUESTED_PORT} was in use.`);
+        console.log(`Using port ${PORT} instead.`);
+        console.log(`====================================\n`);
+      }
+    } catch (portError) {
+      console.error(`Failed to find an available port:`, portError);
+      process.exit(1);
+    }
+
+    // Create the server with the available port
+    const server = app.listen(PORT, currentSettings.serverHost, () => {
+      console.log(`\n=== Browser Tools Server Started ===`);
+      console.log(
+        `Aggregator listening on http://${currentSettings.serverHost}:${PORT}`
+      );
+
+      if (PORT !== REQUESTED_PORT) {
+        console.log(
+          `NOTE: Using fallback port ${PORT} instead of requested port ${REQUESTED_PORT}`
+        );
+      }
+
+      // Log all available network interfaces for easier discovery
+      const networkInterfaces = os.networkInterfaces();
+      console.log("\nAvailable on the following network addresses:");
+
+      Object.keys(networkInterfaces).forEach((interfaceName) => {
+        const interfaces = networkInterfaces[interfaceName];
+        if (interfaces) {
+          interfaces.forEach((iface) => {
+            if (!iface.internal && iface.family === "IPv4") {
+              console.log(`  - http://${iface.address}:${PORT}`);
+            }
+          });
+        }
+      });
+
+      console.log(`\nFor local access use: http://localhost:${PORT}`);
+    });
+
+    // Handle server startup errors
+    server.on("error", (err: any) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `ERROR: Port ${PORT} is still in use, despite our checks!`
+        );
+        console.error(
+          `This might indicate another process started using this port after our check.`
+        );
+      } else {
+        console.error(`Server error:`, err);
+      }
+      process.exit(1);
+    });
+
+    // Initialize the browser connector with the existing app AND server
+    const browserConnector = new BrowserConnector(app, server);
+
+    // Handle shutdown gracefully
+    process.on("SIGINT", () => {
+      server.close(() => {
+        console.log("Server shut down");
+        process.exit(0);
+      });
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  }
+})().catch((err) => {
+  console.error("Unhandled error during server startup:", err);
+  process.exit(1);
 });
