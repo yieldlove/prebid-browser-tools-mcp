@@ -171,16 +171,10 @@ const extractAIOptimizedData = (
     };
 
     // Enhanced LCP element detection
-    console.log("DEBUG: Attempting to find LCP element information");
 
     // 1. Try from largest-contentful-paint-element audit
     if (lcpElement && lcpElement.details) {
-      console.log("DEBUG: Found LCP element audit with details");
       const lcpDetails = lcpElement.details as any;
-      console.log(
-        "DEBUG: LCP element details:",
-        JSON.stringify(lcpDetails).substring(0, 500)
-      );
 
       // First attempt - try to get directly from items
       if (
@@ -189,26 +183,14 @@ const extractAIOptimizedData = (
         lcpDetails.items.length > 0
       ) {
         const item = lcpDetails.items[0];
-        console.log(
-          "DEBUG: Found LCP element item:",
-          JSON.stringify(item).substring(0, 500)
-        );
 
         // For text elements in tables format
         if (item.type === "table" && item.items && item.items.length > 0) {
           const firstTableItem = item.items[0];
-          console.log(
-            "DEBUG: Found table format item:",
-            JSON.stringify(firstTableItem).substring(0, 500)
-          );
 
           if (firstTableItem.node) {
             if (firstTableItem.node.selector) {
               metric.element_selector = firstTableItem.node.selector;
-              console.log(
-                "DEBUG: Found LCP selector from table:",
-                metric.element_selector
-              );
             }
 
             // Determine element type based on path or selector
@@ -216,7 +198,6 @@ const extractAIOptimizedData = (
             const selector = firstTableItem.node.selector || "";
 
             if (path) {
-              console.log("DEBUG: Element path:", path);
               if (
                 selector.includes(" > img") ||
                 selector.includes(" img") ||
@@ -224,18 +205,11 @@ const extractAIOptimizedData = (
                 path.includes(",IMG")
               ) {
                 metric.element_type = "image";
-                console.log(
-                  "DEBUG: Element type set to image based on path/selector"
-                );
 
                 // Try to extract image name from selector
                 const imgMatch = selector.match(/img[.][^> ]+/);
                 if (imgMatch && !metric.element_url) {
                   metric.element_url = imgMatch[0];
-                  console.log(
-                    "DEBUG: Extracted image class name as URL fallback:",
-                    metric.element_url
-                  );
                 }
               } else if (
                 path.includes(",SPAN") ||
@@ -243,13 +217,11 @@ const extractAIOptimizedData = (
                 path.includes(",H")
               ) {
                 metric.element_type = "text";
-                console.log("DEBUG: Element type set to text based on path");
               }
             }
 
             // Try to extract text content if available
             if (firstTableItem.node.nodeLabel) {
-              console.log("DEBUG: Node label:", firstTableItem.node.nodeLabel);
               metric.element_content = firstTableItem.node.nodeLabel.substring(
                 0,
                 100
@@ -259,7 +231,6 @@ const extractAIOptimizedData = (
         }
         // Original handling for direct items
         else if (item.node?.nodeLabel) {
-          console.log("DEBUG: LCP element node label:", item.node.nodeLabel);
           // Determine element type from node label
           if (item.node.nodeLabel.startsWith("<img")) {
             metric.element_type = "image";
@@ -267,10 +238,6 @@ const extractAIOptimizedData = (
             const match = item.node.snippet?.match(/src="([^"]+)"/);
             if (match && match[1]) {
               metric.element_url = match[1];
-              console.log(
-                "DEBUG: Found LCP image URL from node label:",
-                metric.element_url
-              );
             }
           } else if (item.node.nodeLabel.startsWith("<video")) {
             metric.element_type = "video";
@@ -282,21 +249,14 @@ const extractAIOptimizedData = (
 
           if (item.node?.selector) {
             metric.element_selector = item.node.selector;
-            console.log(
-              "DEBUG: Found LCP element selector:",
-              metric.element_selector
-            );
           }
         }
       }
-    } else {
-      console.log("DEBUG: No LCP element audit with details found");
     }
 
     // 2. Try from lcp-lazy-loaded audit
     const lcpImageAudit = audits["lcp-lazy-loaded"];
     if (lcpImageAudit && lcpImageAudit.details) {
-      console.log("DEBUG: Found LCP lazy-loaded audit with details");
       const lcpImageDetails = lcpImageAudit.details as any;
 
       if (
@@ -305,40 +265,20 @@ const extractAIOptimizedData = (
         lcpImageDetails.items.length > 0
       ) {
         const item = lcpImageDetails.items[0];
-        console.log(
-          "DEBUG: LCP lazy-loaded item:",
-          JSON.stringify(item).substring(0, 500)
-        );
 
         if (item.url) {
           metric.element_type = "image";
           metric.element_url = item.url;
-          console.log(
-            "DEBUG: Found LCP image URL from lazy-loaded:",
-            metric.element_url
-          );
         }
       }
-    } else {
-      console.log("DEBUG: No LCP lazy-loaded audit with details found");
     }
 
     // 3. Try directly from the LCP audit details
     if (!metric.element_url && lcp.details) {
-      console.log("DEBUG: Trying to extract from LCP audit details directly");
       const lcpDirectDetails = lcp.details as any;
-      console.log(
-        "DEBUG: LCP audit details:",
-        JSON.stringify(lcpDirectDetails).substring(0, 500)
-      );
 
       if (lcpDirectDetails.items && Array.isArray(lcpDirectDetails.items)) {
         for (const item of lcpDirectDetails.items) {
-          console.log(
-            "DEBUG: LCP direct item:",
-            JSON.stringify(item).substring(0, 500)
-          );
-
           if (item.url || (item.node && item.node.path)) {
             if (item.url) {
               metric.element_url = item.url;
@@ -347,17 +287,9 @@ const extractAIOptimizedData = (
               )
                 ? "image"
                 : "resource";
-              console.log(
-                "DEBUG: Found LCP URL from direct details:",
-                metric.element_url
-              );
             }
             if (item.node && item.node.selector) {
               metric.element_selector = item.node.selector;
-              console.log(
-                "DEBUG: Found LCP selector from direct details:",
-                metric.element_selector
-              );
             }
             break;
           }
@@ -368,7 +300,6 @@ const extractAIOptimizedData = (
     // 4. Check for specific audit that might contain image info
     const largestImageAudit = audits["largest-image-paint"];
     if (largestImageAudit && largestImageAudit.details) {
-      console.log("DEBUG: Found largest-image-paint audit");
       const imageDetails = largestImageAudit.details as any;
 
       if (
@@ -377,26 +308,17 @@ const extractAIOptimizedData = (
         imageDetails.items.length > 0
       ) {
         const item = imageDetails.items[0];
-        console.log(
-          "DEBUG: Largest image item:",
-          JSON.stringify(item).substring(0, 500)
-        );
 
         if (item.url) {
           // If we have a large image that's close in time to LCP, it's likely the LCP element
           metric.element_type = "image";
           metric.element_url = item.url;
-          console.log(
-            "DEBUG: Found image URL from largest-image-paint:",
-            metric.element_url
-          );
         }
       }
     }
 
     // 5. Check for network requests audit to find image resources
     if (!metric.element_url) {
-      console.log("DEBUG: Checking network requests for potential LCP images");
       const networkRequests = audits["network-requests"];
 
       if (networkRequests && networkRequests.details) {
@@ -421,10 +343,6 @@ const extractAIOptimizedData = (
 
           if (imageResources.length > 0) {
             const closestImage = imageResources[0];
-            console.log(
-              "DEBUG: Found potential LCP image from network:",
-              closestImage.url
-            );
 
             if (!metric.element_type) {
               metric.element_type = "image";
@@ -434,13 +352,6 @@ const extractAIOptimizedData = (
         }
       }
     }
-
-    console.log(
-      "DEBUG: Final LCP element info:",
-      metric.element_type || "unknown type",
-      metric.element_url || "no URL",
-      metric.element_selector || "no selector"
-    );
 
     metrics.push(metric);
   }
