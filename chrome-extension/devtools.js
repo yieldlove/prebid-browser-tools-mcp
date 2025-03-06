@@ -768,139 +768,6 @@ async function setupWebSocket() {
     // Set flag to indicate this is an intentional closure
     intentionalClosure = true;
     try {
-      const message = JSON.parse(event.data);
-      console.log("Chrome Extension: Received WebSocket message:", message);
-
-      if (message.type === "take-screenshot") {
-        console.log("Chrome Extension: Taking screenshot...");
-        // Capture screenshot of the current tab
-        chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
-          if (chrome.runtime.lastError) {
-            console.error(
-              "Chrome Extension: Screenshot capture failed:",
-              chrome.runtime.lastError
-            );
-            ws.send(
-              JSON.stringify({
-                type: "screenshot-error",
-                error: chrome.runtime.lastError.message,
-                requestId: message.requestId,
-              })
-            );
-            return;
-          }
-
-          console.log("Chrome Extension: Screenshot captured successfully");
-          // Just send the screenshot data, let the server handle paths
-          const response = {
-            type: "screenshot-data",
-            data: dataUrl,
-            requestId: message.requestId,
-            // Only include path if it's configured in settings
-            ...(settings.screenshotPath && { path: settings.screenshotPath }),
-          };
-
-          console.log("Chrome Extension: Sending screenshot data response", {
-            ...response,
-            data: "[base64 data]",
-          });
-
-          ws.send(JSON.stringify(response));
-        });
-      } else if (message.type === "get-current-url") {
-        console.log("Chrome Extension: Received request for current URL");
-
-        // Get the current URL from the background script instead of inspectedWindow.eval
-        let retryCount = 0;
-        const maxRetries = 2;
-
-        const requestCurrentUrl = () => {
-          chrome.runtime.sendMessage(
-            {
-              type: "GET_CURRENT_URL",
-              tabId: chrome.devtools.inspectedWindow.tabId,
-            },
-            (response) => {
-              if (chrome.runtime.lastError) {
-                console.error(
-                  "Chrome Extension: Error getting URL from background:",
-                  chrome.runtime.lastError
-                );
-
-                // Retry logic
-                if (retryCount < maxRetries) {
-                  retryCount++;
-                  console.log(
-                    `Retrying URL request (${retryCount}/${maxRetries})...`
-                  );
-                  setTimeout(requestCurrentUrl, 500); // Wait 500ms before retrying
-                  return;
-                }
-
-                ws.send(
-                  JSON.stringify({
-                    type: "current-url-response",
-                    url: null,
-                    tabId: chrome.devtools.inspectedWindow.tabId,
-                    error:
-                      "Failed to get URL from background: " +
-                      chrome.runtime.lastError.message,
-                    requestId: message.requestId,
-                  })
-                );
-                return;
-              }
-
-              if (response && response.success && response.url) {
-                console.log(
-                  "Chrome Extension: Got URL from background:",
-                  response.url
-                );
-                ws.send(
-                  JSON.stringify({
-                    type: "current-url-response",
-                    url: response.url,
-                    tabId: chrome.devtools.inspectedWindow.tabId,
-                    requestId: message.requestId,
-                  })
-                );
-              } else {
-                console.error(
-                  "Chrome Extension: Invalid URL response from background:",
-                  response
-                );
-
-                // Last resort - try to get URL directly from the tab
-                chrome.tabs.query(
-                  { active: true, currentWindow: true },
-                  (tabs) => {
-                    const url = tabs && tabs[0] && tabs[0].url;
-                    console.log(
-                      "Chrome Extension: Got URL directly from tab:",
-                      url
-                    );
-
-                    ws.send(
-                      JSON.stringify({
-                        type: "current-url-response",
-                        url: url || null,
-                        tabId: chrome.devtools.inspectedWindow.tabId,
-                        error:
-                          response?.error ||
-                          "Failed to get URL from background",
-                        requestId: message.requestId,
-                      })
-                    );
-                  }
-                );
-              }
-            }
-          );
-        };
-
-        requestCurrentUrl();
-      }
-
       ws.close();
     } catch (e) {
       console.error("Error closing existing WebSocket:", e);
@@ -963,6 +830,9 @@ async function setupWebSocket() {
               "Chrome Extension: Error getting URL from background on connection:",
               chrome.runtime.lastError
             );
+
+            // If normal method fails, try fallback to chrome.tabs API directly
+            tryFallbackGetUrl();
             return;
           }
 
@@ -977,10 +847,49 @@ async function setupWebSocket() {
               type: "UPDATE_SERVER_URL",
               tabId: chrome.devtools.inspectedWindow.tabId,
               url: response.url,
+              source: "initial_connection",
             });
+          } else {
+            // If response exists but no URL, try fallback
+            tryFallbackGetUrl();
           }
         }
       );
+
+      // Fallback method to get URL directly
+      function tryFallbackGetUrl() {
+        console.log("Chrome Extension: Trying fallback method to get URL");
+
+        // Try to get the URL directly using the tabs API
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              "Chrome Extension: Fallback URL retrieval failed:",
+              chrome.runtime.lastError
+            );
+            return;
+          }
+
+          if (tabs && tabs.length > 0 && tabs[0].url) {
+            console.log(
+              "Chrome Extension: Got URL via fallback method:",
+              tabs[0].url
+            );
+
+            // Send the URL to the server
+            chrome.runtime.sendMessage({
+              type: "UPDATE_SERVER_URL",
+              tabId: chrome.devtools.inspectedWindow.tabId,
+              url: tabs[0].url,
+              source: "fallback_method",
+            });
+          } else {
+            console.warn(
+              "Chrome Extension: Could not retrieve URL through fallback method"
+            );
+          }
+        });
+      }
     };
 
     ws.onerror = (error) => {

@@ -16,7 +16,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log(
       `Background: Received request to update server with URL for tab ${message.tabId}: ${message.url}`
     );
-    updateServerWithUrl(message.tabId, message.url)
+    updateServerWithUrl(
+      message.tabId,
+      message.url,
+      message.source || "explicit_update"
+    )
       .then(() => {
         if (sendResponse) sendResponse({ success: true });
       })
@@ -170,7 +174,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     tabUrls.set(tabId, changeInfo.url);
 
     // Send URL update to server if possible
-    updateServerWithUrl(tabId, changeInfo.url);
+    updateServerWithUrl(tabId, changeInfo.url, "tab_url_change");
   }
 
   // Check if this is a page refresh (status becoming "complete")
@@ -179,7 +183,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (tab.url) {
       tabUrls.set(tabId, tab.url);
       // Send URL update to server if possible
-      updateServerWithUrl(tabId, tab.url);
+      updateServerWithUrl(tabId, tab.url, "page_complete");
     }
 
     retestConnectionOnRefresh(tabId);
@@ -205,13 +209,13 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
       tabUrls.set(tabId, tab.url);
 
       // Send URL update to server
-      updateServerWithUrl(tabId, tab.url);
+      updateServerWithUrl(tabId, tab.url, "tab_activated");
     }
   });
 });
 
 // Function to update the server with the current URL
-async function updateServerWithUrl(tabId, url) {
+async function updateServerWithUrl(tabId, url, source = "background_update") {
   if (!url) {
     console.error("Cannot update server with empty URL");
     return;
@@ -250,7 +254,7 @@ async function updateServerWithUrl(tabId, url) {
             url: url,
             tabId: tabId,
             timestamp: Date.now(),
-            source: "tab_update",
+            source: source,
           }),
           // Add a timeout to prevent hanging requests
           signal: AbortSignal.timeout(5000),
