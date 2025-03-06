@@ -890,7 +890,7 @@ export class BrowserConnector {
       console.log("No valid URL available yet, waiting for navigation...");
 
       // Wait up to 10 seconds for a URL to be set (20 attempts x 500ms)
-      const maxAttempts = 20;
+      const maxAttempts = 50;
       const waitTime = 500; // ms
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {

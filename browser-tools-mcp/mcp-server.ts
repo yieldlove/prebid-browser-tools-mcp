@@ -351,12 +351,11 @@ enum AuditCategory {
 // Add tool for accessibility audits, launches a headless browser instance
 server.tool(
   "runAccessibilityAudit",
-  "Run a WCAG-compliant accessibility audit on the current page",
+  "Run an accessibility audit on the current page",
   {},
   async () => {
     return await withServerConnection(async () => {
       try {
-        // Simplified approach - let the browser connector handle the current tab and URL
         console.log(
           `Sending POST request to http://${discoveredHost}:${discoveredPort}/accessibility-audit`
         );
@@ -369,32 +368,48 @@ server.tool(
               Accept: "application/json",
             },
             body: JSON.stringify({
-              category: AuditCategory.ACCESSIBILITY,
               source: "mcp_tool",
               timestamp: Date.now(),
             }),
           }
         );
 
-        // Log the response status
-        console.log(`Accessibility audit response status: ${response.status}`);
-
+        // Check for errors
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(`Accessibility audit error: ${errorText}`);
           throw new Error(`Server returned ${response.status}: ${errorText}`);
         }
 
         const json = await response.json();
 
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(json, null, 2),
-            },
-          ],
-        };
+        // If the response is in the new format with a nested 'report',
+        // flatten it by merging metadata with the report contents
+        if (json.report) {
+          const { metadata, report } = json;
+          const flattened = {
+            ...metadata,
+            ...report,
+          };
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(flattened, null, 2),
+              },
+            ],
+          };
+        } else {
+          // Return as-is if it's not in the new format
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(json, null, 2),
+              },
+            ],
+          };
+        }
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
@@ -484,7 +499,6 @@ server.tool(
   async () => {
     return await withServerConnection(async () => {
       try {
-        // Simplified approach - let the browser connector handle the current tab and URL
         console.log(
           `Sending POST request to http://${discoveredHost}:${discoveredPort}/seo-audit`
         );
@@ -497,32 +511,48 @@ server.tool(
               Accept: "application/json",
             },
             body: JSON.stringify({
-              category: AuditCategory.SEO,
               source: "mcp_tool",
               timestamp: Date.now(),
             }),
           }
         );
 
-        // Log the response status
-        console.log(`SEO audit response status: ${response.status}`);
-
+        // Check for errors
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(`SEO audit error: ${errorText}`);
           throw new Error(`Server returned ${response.status}: ${errorText}`);
         }
 
         const json = await response.json();
 
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(json, null, 2),
-            },
-          ],
-        };
+        // If the response is in the new format with a nested 'report',
+        // flatten it by merging metadata with the report contents
+        if (json.report) {
+          const { metadata, report } = json;
+          const flattened = {
+            ...metadata,
+            ...report,
+          };
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(flattened, null, 2),
+              },
+            ],
+          };
+        } else {
+          // Return as-is if it's not in the new format
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(json, null, 2),
+              },
+            ],
+          };
+        }
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);

@@ -2,15 +2,32 @@ import { Result as LighthouseResult } from "lighthouse";
 import { AuditCategory, LighthouseReport } from "./types.js";
 import { runLighthouseAudit } from "./index.js";
 
-interface PerformanceAuditDetails {
-  items?: Array<{
-    resourceUrl?: string; // e.g., "https://example.com/script.js" (for render-blocking resources)
-    wastedMs?: number; // e.g., 150 (potential savings)
-    elementSelector?: string; // e.g., "img.hero" (for LCP element)
-    timing?: number; // e.g., 2.5 (specific timing value)
-  }>;
-  type?: string; // e.g., "opportunity" or "table"
+// === Performance Report Types ===
+
+/**
+ * Performance-specific report content structure
+ */
+export interface PerformanceReportContent {
+  score: number; // Overall score (0-100)
+  audit_counts: {
+    // Counts of different audit types
+    failed: number;
+    passed: number;
+    manual: number;
+    informative: number;
+    not_applicable: number;
+  };
+  metrics: AIOptimizedMetric[];
+  opportunities: AIOptimizedOpportunity[];
+  page_stats?: AIPageStats; // Optional page statistics
+  prioritized_recommendations?: string[]; // Ordered list of recommendations
 }
+
+/**
+ * Full performance report implementing the base LighthouseReport interface
+ */
+export type AIOptimizedPerformanceReport =
+  LighthouseReport<PerformanceReportContent>;
 
 // AI-optimized performance metric format
 interface AIOptimizedMetric {
@@ -28,7 +45,7 @@ interface AIOptimizedMetric {
 interface AIOptimizedOpportunity {
   id: string; // Like "render_blocking", "http2"
   savings_ms: number; // Time savings in ms
-  severity?: "critical" | "major" | "minor"; // Severity classification
+  severity?: "critical" | "serious" | "moderate" | "minor"; // Severity classification
   resources: Array<{
     url: string; // Resource URL
     savings_ms?: number; // Individual resource savings
@@ -54,28 +71,13 @@ interface AIPageStats {
   main_thread_blocking_time_ms: number; // Time spent blocking the main thread
 }
 
-// AI-optimized performance report
-interface AIOptimizedPerformanceReport {
-  metadata: {
-    url: string; // Page URL
-    timestamp: string; // ISO timestamp
-    device: string; // Device type (desktop, mobile)
-    lighthouseVersion: string; // Lighthouse version used
-  };
-  score: number; // Overall score (0-100)
-  audit_counts: {
-    // Counts of different audit types
-    failed: number;
-    passed: number;
-    manual: number;
-    informative: number;
-    not_applicable: number;
-  };
-  metrics: AIOptimizedMetric[];
-  opportunities: AIOptimizedOpportunity[];
-  page_stats?: AIPageStats; // Optional page statistics
-  prioritized_recommendations?: string[]; // Ordered list of recommendations
-}
+// This ensures we always include critical issues while limiting less important ones
+const DETAIL_LIMITS = {
+  critical: Number.MAX_SAFE_INTEGER, // No limit for critical issues
+  serious: 15, // Up to 15 items for serious issues
+  moderate: 10, // Up to 10 items for moderate issues
+  minor: 3, // Up to 3 items for minor issues
+};
 
 /**
  * Performance audit adapted for AI consumption
@@ -84,7 +86,9 @@ interface AIOptimizedPerformanceReport {
  * - Key metrics and opportunities clearly structured
  * - Only actionable data that an AI can use for recommendations
  */
-export async function runPerformanceAudit(url: string): Promise<any> {
+export async function runPerformanceAudit(
+  url: string
+): Promise<AIOptimizedPerformanceReport> {
   try {
     const lhr = await runLighthouseAudit(url, [AuditCategory.PERFORMANCE]);
     return extractAIOptimizedData(lhr, url);
@@ -495,24 +499,43 @@ const extractAIOptimizedData = (
   // Extract opportunities
   if (audits["render-blocking-resources"]) {
     const rbrAudit = audits["render-blocking-resources"];
+
+    // Determine impact level based on potential savings
+    let impact: "critical" | "serious" | "moderate" | "minor" = "moderate";
+    const savings = Math.round(rbrAudit.numericValue || 0);
+
+    if (savings > 2000) {
+      impact = "critical";
+    } else if (savings > 1000) {
+      impact = "serious";
+    } else if (savings < 300) {
+      impact = "minor";
+    }
+
     const opportunity: AIOptimizedOpportunity = {
       id: "render_blocking_resources",
-      savings_ms: Math.round(rbrAudit.numericValue || 0),
+      savings_ms: savings,
+      severity: impact,
       resources: [],
     };
 
     const rbrDetails = rbrAudit.details as any;
     if (rbrDetails && rbrDetails.items && Array.isArray(rbrDetails.items)) {
-      rbrDetails.items.forEach((item: { url?: string; wastedMs?: number }) => {
-        if (item.url) {
-          // Extract file name from full URL
-          const fileName = item.url.split("/").pop() || item.url;
-          opportunity.resources.push({
-            url: fileName,
-            savings_ms: Math.round(item.wastedMs || 0),
-          });
-        }
-      });
+      // Determine how many items to include based on impact
+      const itemLimit = DETAIL_LIMITS[impact];
+
+      rbrDetails.items
+        .slice(0, itemLimit)
+        .forEach((item: { url?: string; wastedMs?: number }) => {
+          if (item.url) {
+            // Extract file name from full URL
+            const fileName = item.url.split("/").pop() || item.url;
+            opportunity.resources.push({
+              url: fileName,
+              savings_ms: Math.round(item.wastedMs || 0),
+            });
+          }
+        });
     }
 
     if (opportunity.resources.length > 0) {
@@ -522,9 +545,23 @@ const extractAIOptimizedData = (
 
   if (audits["uses-http2"]) {
     const http2Audit = audits["uses-http2"];
+
+    // Determine impact level based on potential savings
+    let impact: "critical" | "serious" | "moderate" | "minor" = "moderate";
+    const savings = Math.round(http2Audit.numericValue || 0);
+
+    if (savings > 2000) {
+      impact = "critical";
+    } else if (savings > 1000) {
+      impact = "serious";
+    } else if (savings < 300) {
+      impact = "minor";
+    }
+
     const opportunity: AIOptimizedOpportunity = {
       id: "http2",
-      savings_ms: Math.round(http2Audit.numericValue || 0),
+      savings_ms: savings,
+      severity: impact,
       resources: [],
     };
 
@@ -534,13 +571,18 @@ const extractAIOptimizedData = (
       http2Details.items &&
       Array.isArray(http2Details.items)
     ) {
-      http2Details.items.forEach((item: { url?: string }) => {
-        if (item.url) {
-          // Extract file name from full URL
-          const fileName = item.url.split("/").pop() || item.url;
-          opportunity.resources.push({ url: fileName });
-        }
-      });
+      // Determine how many items to include based on impact
+      const itemLimit = DETAIL_LIMITS[impact];
+
+      http2Details.items
+        .slice(0, itemLimit)
+        .forEach((item: { url?: string }) => {
+          if (item.url) {
+            // Extract file name from full URL
+            const fileName = item.url.split("/").pop() || item.url;
+            opportunity.resources.push({ url: fileName });
+          }
+        });
     }
 
     if (opportunity.resources.length > 0) {
@@ -705,9 +747,8 @@ const extractAIOptimizedData = (
     prioritized_recommendations.push("Reduce JavaScript execution time");
   }
 
-  // Add to the return object
-  return {
-    metadata,
+  // Create the performance report content
+  const reportContent: PerformanceReportContent = {
     score,
     audit_counts,
     metrics,
@@ -717,5 +758,11 @@ const extractAIOptimizedData = (
       prioritized_recommendations.length > 0
         ? prioritized_recommendations
         : undefined,
+  };
+
+  // Return the full report following the LighthouseReport interface
+  return {
+    metadata,
+    report: reportContent,
   };
 };

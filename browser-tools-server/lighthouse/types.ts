@@ -12,20 +12,25 @@ export enum AuditCategory {
 /**
  * Base interface for Lighthouse report metadata
  */
-export interface LighthouseReport {
+export interface LighthouseReport<T = any> {
   metadata: {
     url: string;
     timestamp: string; // ISO 8601, e.g., "2025-02-27T14:30:00Z"
     device: string; // e.g., "mobile", "desktop"
     lighthouseVersion: string; // e.g., "10.4.0"
   };
-  overallScore: number;
-  failedAuditsCount: number;
-  passedAuditsCount: number;
-  manualAuditsCount: number;
-  informativeAuditsCount: number;
-  notApplicableAuditsCount: number;
-  failedAudits: any[];
+
+  // For backward compatibility with existing report formats
+  overallScore?: number;
+  failedAuditsCount?: number;
+  passedAuditsCount?: number;
+  manualAuditsCount?: number;
+  informativeAuditsCount?: number;
+  notApplicableAuditsCount?: number;
+  failedAudits?: any[];
+
+  // New format for specialized reports
+  report?: T; // Generic report data that will be specialized by each audit type
 }
 
 /**
