@@ -10,7 +10,7 @@ A Model Context Protocol (MCP) server that provides AI-powered browser tools int
 - Screenshot capture capabilities
 - Element selection and inspection
 - Real-time browser state monitoring
-- Accessibility and performance audits
+- Accessibility, performance, SEO, and best practices audits
 
 ## Prerequisites
 
@@ -65,88 +65,8 @@ The server provides the following MCP functions:
 - `mcp_getSelectedElement` - Get the currently selected DOM element
 - `mcp_runAccessibilityAudit` - Run a WCAG-compliant accessibility audit
 - `mcp_runPerformanceAudit` - Run a performance audit
-
-## Audit Functionality
-
-The MCP server provides Lighthouse-powered audit capabilities through two main functions:
-
-### Accessibility Audit
-
-The `mcp_runAccessibilityAudit` function runs a WCAG-compliant accessibility audit on the current page. It returns:
-
-- An overall accessibility score (0-100)
-- A list of accessibility issues sorted by impact level (critical, serious, moderate, minor)
-- Detailed information about each issue including:
-  - Affected elements (with selectors and snippets)
-  - WCAG reference information
-  - Recommendations for fixing the issues
-
-Example output:
-
-```json
-{
-  "score": 78,
-  "categoryScores": {
-    "accessibility": 78
-  },
-  "issues": [
-    {
-      "id": "color-contrast",
-      "title": "Background and foreground colors do not have a sufficient contrast ratio",
-      "description": "Low-contrast text is difficult or impossible for many users to read.",
-      "score": 0,
-      "impact": "serious",
-      "elements": [
-        {
-          "selector": ".nav-link",
-          "snippet": "<a class=\"nav-link\">Home</a>",
-          "explanation": "Element has insufficient color contrast of 2.5:1"
-        }
-      ],
-      "failureSummary": "Fix any of the following: Element has insufficient color contrast of 2.5:1 (foreground color: #888888, background color: #ffffff, font size: 12.0pt, font weight: normal)"
-    }
-  ]
-}
-```
-
-### Performance Audit
-
-The `mcp_runPerformanceAudit` function runs a performance audit on the current page. It returns:
-
-- An overall performance score (0-100)
-- A list of performance issues sorted by impact on page load time
-- Detailed information about each issue including:
-  - Affected resources
-  - Wasted bytes and milliseconds
-  - Recommendations for improving performance
-
-Example output:
-
-```json
-{
-  "score": 65,
-  "categoryScores": {
-    "performance": 65
-  },
-  "issues": [
-    {
-      "id": "render-blocking-resources",
-      "title": "Eliminate render-blocking resources",
-      "description": "Resources are blocking the first paint of your page.",
-      "score": 0.4,
-      "impact": "serious",
-      "elements": [
-        {
-          "url": "https://example.com/styles.css",
-          "wastedMs": 350,
-          "wastedBytes": 45000
-        }
-      ],
-      "failureSummary": "Consider delivering critical JS/CSS inline and deferring all non-critical JS/styles."
-    }
-  ]
-}
-```
+- `mcp_runSEOAudit` - Run an SEO audit
+- `mcp_runBestPracticesAudit` - Run a best practices audit
 
 ## Integration
 
