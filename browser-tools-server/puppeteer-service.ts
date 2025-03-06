@@ -360,8 +360,17 @@ async function findBrowserExecutablePath(): Promise<string> {
       console.log("Chrome launched but couldn't determine executable path");
     }
   } catch (error) {
-    console.error("Failed to find Chrome using chrome-launcher:", error);
-    console.log("Falling back to manual detection");
+    // Check if it's a ChromeNotInstalledError
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (
+      errorMessage.includes("No Chrome installations found") ||
+      (error as any)?.code === "ERR_LAUNCHER_NOT_INSTALLED"
+    ) {
+      console.log("Chrome not installed. Falling back to manual detection");
+    } else {
+      console.error("Failed to find Chrome using chrome-launcher:", error);
+      console.log("Falling back to manual detection");
+    }
   }
 
   // If chrome-launcher failed, use manual detection
