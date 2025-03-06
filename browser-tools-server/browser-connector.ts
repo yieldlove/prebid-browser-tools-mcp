@@ -875,19 +875,40 @@ export class BrowserConnector {
     }
   }
 
-  // Updated method to get URL for audits with improved connection tracking
+  // Updated method to get URL for audits with improved connection tracking and waiting
   private async getUrlForAudit(): Promise<string | null> {
     try {
       console.log("getUrlForAudit called");
 
-      // Use the stored URL if available as fallback
-      if (currentUrl) {
-        // Store the URL but don't log it yet - we'll log it when we actually use it
+      // Use the stored URL if available immediately
+      if (currentUrl && currentUrl !== "" && currentUrl !== "about:blank") {
+        console.log(`Using existing URL immediately: ${currentUrl}`);
         return currentUrl;
       }
 
-      // If no URL is available, return null to trigger an error
-      console.log("No URL available for audit, returning null");
+      // Wait for a URL to become available (retry loop)
+      console.log("No valid URL available yet, waiting for navigation...");
+
+      // Wait up to 10 seconds for a URL to be set (20 attempts x 500ms)
+      const maxAttempts = 20;
+      const waitTime = 500; // ms
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        // Check if URL is available now
+        if (currentUrl && currentUrl !== "" && currentUrl !== "about:blank") {
+          console.log(`URL became available after waiting: ${currentUrl}`);
+          return currentUrl;
+        }
+
+        // Wait before checking again
+        console.log(
+          `Waiting for URL (attempt ${attempt + 1}/${maxAttempts})...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+      }
+
+      // If we reach here, no URL became available after waiting
+      console.log("Timed out waiting for URL, returning null");
       return null;
     } catch (error) {
       console.error("Error in getUrlForAudit:", error);
@@ -1097,10 +1118,7 @@ export class BrowserConnector {
 
         // If we're using the stored URL (not from request body), log it now
         if (!req.body?.url && url === currentUrl) {
-          console.log(
-            `Using stored URL as fallback for ${auditType} audit:`,
-            url
-          );
+          console.log(`Using stored URL for ${auditType} audit:`, url);
         }
 
         // Check if we're using the default URL

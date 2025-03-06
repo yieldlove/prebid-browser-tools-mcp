@@ -3,7 +3,7 @@ import type { Result as LighthouseResult, Flags } from "lighthouse";
 import {
   connectToHeadlessBrowser,
   scheduleBrowserCleanup,
-} from "../browser-utils.js";
+} from "../puppeteer-service.js";
 import { LighthouseConfig, AuditCategory } from "./types.js";
 
 /**
