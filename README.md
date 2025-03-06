@@ -1,43 +1,95 @@
-# BrowserTools MCP (Fork)
+# BrowserTools MCP
 
-This fork of [BrowserTools MCP](https://github.com/AgentDeskAI/browser-tools-mcp) extends the original browser monitoring toolset with Lighthouse-powered accessibility, performance, and SEO audits, leveraging Puppeteer for headless browser control.
+> Make your AI tools 10x more aware and capable of interacting with your browser
 
-## Key Additions
+This application is a powerful browser monitoring and interaction tool that enables AI-powered applications via Anthropic's Model Context Protocol (MCP) to capture and analyze browser data through a Chrome extension.
 
-- **Accessibility Audits**:
-- **Performance Audits**: Analyze page load and runtime efficiency.
-- **SEO Audits**: Assess on-page SEO factors and suggest improvements.
-- **Best Practices Audit**: Run a best practices audit.
-- **Puppeteer Integration**: Enables reliable, headless browser audits.
+Read our [docs](https://browsertools.agentdesk.ai/) for the full installation, quickstart and contribution guides.
 
-### Using Audit Tools
+## Updates
 
-#### Before you start
+v1.1.0 is out! This includes several bug fixes for logging + screenshots.
 
-Make sure that you have an active tab in your browser with BrowserTools extension being active.
+Please make sure to update the version in your IDE / MCP client as so:
+`npx @agentdeskai/browser-tools-mcp@1.1.0`
 
-#### Running audits
+Also make sure to download the latest version of the chrome extension here:
+[v1.1.0 BrowserToolsMCP Chrome Extension](https://github.com/AgentDeskAI/browser-tools-mcp/releases/download/v1.1.0/chrome-extension-v1-1-0.zip)
 
-The MCP server provides tools to run audits on the current page. Here are example queries you can use to trigger them:
+From there you can run the local node server as usual like so:
+`npx @agentdeskai/browser-tools-server`
 
-- **Accessibility Audit** (`runAccessibilityAudit`):
-  - "Are there any accessibility issues on this page?"
-  - "Run an accessibility audit."
-  - "Check if this page meets WCAG standards."
-- **Performance Audit** (`runPerformanceAudit`):
-  - "Why is this page loading so slowly?"
-  - "Check the performance of this page."
-  - "Run a performance audit."
-- **SEO Audit** (`runSEOAudit`):
-  - "How can I improve SEO for this page?"
-  - "Run an SEO audit."
-  - "Check SEO on this page."
-- **Best Practices Audit** (`runBestPracticesAudit`):
-  - "Run a best practices audit."
-  - "Check best practices on this page."
-  - "Are there any best practices issues on this page?"
+And once you've opened your chrome dev tools, logs should be getting sent to your server!
 
-## Quick Start
+If you have any questions or issues, feel free to open an issue ticket! And if you have any ideas to make this better, feel free to reach out or open an issue ticket with an enhancement tag or reach out to me at [@tedx_ai on x](https://x.com/tedx_ai)
 
-- Follow the [Browser Tools installation guide](https://browsertools.agentdesk.ai/installation)
-- To try the new tools, make sure to stand in the current tab (that you want to scan) with the Browser tools extension active
+## Architecture
+
+There are three core components all used to capture and analyze browser data:
+
+1. **Chrome Extension**: A browser extension that captures screenshots, console logs, network activity and DOM elements.
+2. **Node Server**: An intermediary server that facilitates communication between the Chrome extension and any instance of an MCP server.
+3. **MCP Server**: A Model Context Protocol server that provides standardized tools for AI clients to interact with the browser.
+
+```
+┌─────────────┐     ┌──────────────┐     ┌───────────────┐     ┌─────────────┐
+│  MCP Client │ ──► │  MCP Server  │ ──► │  Node Server  │ ──► │   Chrome    │
+│  (e.g.      │ ◄── │  (Protocol   │ ◄── │ (Middleware)  │ ◄── │  Extension  │
+│   Cursor)   │     │   Handler)   │     │               │     │             │
+└─────────────┘     └──────────────┘     └───────────────┘     └─────────────┘
+```
+
+Model Context Protocol (MCP) is a capability supported by Anthropic AI models that
+allow you to create custom tools for any compatible client. MCP clients like Claude
+Desktop, Cursor, Cline or Zed can run an MCP server which "teaches" these clients
+about a new tool that they can use.
+
+These tools can call out to external APIs but in our case, **all logs are stored locally** on your machine and NEVER sent out to any third-party service or API. BrowserTools MCP runs a local instance of a NodeJS API server which communicates with the BrowserTools Chrome Extension.
+
+All consumers of the BrowserTools MCP Server interface with the same NodeJS API and Chrome extension.
+
+#### Chrome Extension
+
+- Monitors XHR requests/responses and console logs
+- Tracks selected DOM elements
+- Sends all logs and current element to the BrowserTools Connector
+- Connects to Websocket server to capture/send screenshots
+- Allows user to configure token/truncation limits + screenshot folder path
+
+#### Node Server
+
+- Acts as middleware between the Chrome extension and MCP server
+- Receives logs and currently selected element from Chrome extension
+- Processes requests from MCP server to capture logs, screenshot or current element
+- Sends Websocket command to the Chrome extension for capturing a screenshot
+- Intelligently truncates strings and # of duplicate objects in logs to avoid token limits
+- Removes cookies and sensitive headers to avoid sending to LLMs in MCP clients
+
+#### MCP Server
+
+- Implements the Model Context Protocol
+- Provides standardized tools for AI clients
+- Compatible with various MCP clients (Cursor, Cline, Zed, Claude Desktop, etc.)
+
+## Installation
+
+Installation steps can be found in our documentation:
+
+- [BrowserTools MCP Docs](https://browsertools.agentdesk.ai/)
+
+## Usage
+
+Once installed and configured, the system allows any compatible MCP client to:
+
+- Monitor browser console output
+- Capture network traffic
+- Take screenshots
+- Analyze selected elements
+- Wipe logs stored in our MCP server
+- Run accessibility, performance, SEO, and best practices audits
+
+## Compatibility
+
+- Works with any MCP-compatible client
+- Primarily designed for Cursor IDE integration
+- Supports other AI editors and MCP clients
