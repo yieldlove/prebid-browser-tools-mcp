@@ -18,6 +18,7 @@ import {
   LighthouseReport,
 } from "./lighthouse/index.js";
 import * as net from "net";
+import { runBestPracticesAudit } from "./lighthouse/best-practices.js";
 
 /**
  * Converts a file path to the appropriate format for the current platform
@@ -634,6 +635,9 @@ export class BrowserConnector {
     // Set up SEO audit endpoint
     this.setupSEOAudit();
 
+    // Set up Best Practices audit endpoint
+    this.setupBestPracticesAudit();
+
     // Handle upgrade requests for WebSocket
     this.server.on(
       "upgrade",
@@ -1081,6 +1085,15 @@ export class BrowserConnector {
   // Set up SEO audit endpoint
   private setupSEOAudit() {
     this.setupAuditEndpoint(AuditCategory.SEO, "/seo-audit", runSEOAudit);
+  }
+
+  // Add a setup method for Best Practices audit
+  private setupBestPracticesAudit() {
+    this.setupAuditEndpoint(
+      AuditCategory.BEST_PRACTICES,
+      "/best-practices-audit",
+      runBestPracticesAudit
+    );
   }
 
   /**
