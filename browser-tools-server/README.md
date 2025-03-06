@@ -52,6 +52,7 @@ npx @agentdeskai/browser-tools-server
 - `/selected-element` - Get currently selected DOM element
 - `/accessibility-audit` - Run accessibility audit on current page
 - `/performance-audit` - Run performance audit on current page
+- `/seo-audit` - Run SEO audit on current page
 
 ## API Documentation
 
@@ -72,6 +73,7 @@ npx @agentdeskai/browser-tools-server
 - `POST /wipelogs` - Clear all stored logs
 - `POST /accessibility-audit` - Run a WCAG-compliant accessibility audit on the current page
 - `POST /performance-audit` - Run a performance audit on the current page
+- `POST /seo-audit` - Run a SEO audit on the current page
 
 ## Audit Functionality
 
@@ -100,3 +102,29 @@ Runs a performance audit on the current page to identify issues affecting load s
 ## License
 
 MIT
+
+# Puppeteer Service
+
+A comprehensive browser automation service built on Puppeteer to provide reliable cross-platform browser control capabilities.
+
+## Features
+
+- **Cross-Platform Browser Support**:
+
+  - Windows, macOS, and Linux support
+  - Chrome, Edge, Brave, and Firefox detection
+  - Fallback strategy for finding browser executables
+
+- **Smart Browser Management**:
+
+  - Singleton browser instance with automatic cleanup
+  - Connection retry mechanisms
+  - Temporary user data directories with cleanup
+
+- **Rich Configuration Options**:
+  - Custom browser paths
+  - Network condition emulation
+  - Device emulation (mobile, tablet, desktop)
+  - Resource blocking
+  - Cookies and headers customization
+  - Locale and timezone emulation
