@@ -10,12 +10,7 @@ A powerful browser tools server for capturing and managing browser events, logs,
 - Element selection tracking
 - WebSocket real-time communication
 - Configurable log limits and settings
-- Lighthouse-powered accessibility and performance audits
-
-## Prerequisites
-
-- Node.js 14 or higher
-- Chrome or Chromium browser installed (required for audit functionality)
+- Lighthouse-powered accessibility, performance, SEO, and best practices audits
 
 ## Installation
 
