@@ -11,6 +11,7 @@ let settings = {
   screenshotPath: "", // Add new setting for screenshot path
   serverHost: "localhost", // Default server host
   serverPort: 3025, // Default server port
+  allowAutoPaste: false, // Default auto-paste setting
 };
 
 // Keep track of debugger state
@@ -978,6 +979,8 @@ async function setupWebSocket() {
               requestId: message.requestId,
               // Only include path if it's configured in settings
               ...(settings.screenshotPath && { path: settings.screenshotPath }),
+              // Include auto-paste setting
+              autoPaste: settings.allowAutoPaste,
             };
 
             console.log("Chrome Extension: Sending screenshot data response", {

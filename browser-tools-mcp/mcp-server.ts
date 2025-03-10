@@ -1272,6 +1272,13 @@ server.tool("runNextJSAudit", {}, async () => ({
       Remember to use a CDN to serve your media (images, videos, etc.) to improve the loading speed.
 
       For the image format, use WebP if possible because it has a smaller size than PNG and JPEG.
+
+      Given the provided procedures, begin by analyzing all of our Next.js pages.
+      Check to see what metadata already exists, look for any robot.txt files, and take a closer look at some of the other aspects of our project to determine areas of improvement.
+      Once you've performed this comprehensive analysis, return back a report on what we can do to improve our application.
+      Do not actually make the code changes yet, just return a comprehensive plan that you will ask for approval for.
+      If feedback is provided, adjust the plan accordingly and ask for approval again.
+      If the user approves of the plan, go ahead and proceed to implement all the necessary code changes to completely optimize our application.
     `,
     },
   ],
@@ -1295,6 +1302,8 @@ server.tool(
   6. Deeply reflect on what could be wrong + produce a comprehensive analysis of the issue
   7. Suggest additional logs if the issue persists or if the source is not yet clear
   8. Once a fix is implemented, ask for approval to remove the previously added logs
+
+  Note: DO NOT run any of our audits (runAccessibilityAudit, runPerformanceAudit, runBestPracticesAudit, runSEOAudit, runNextJSAudit) when in debugging mode unless explicitly asked to do so or unless you switch to audit mode.
 `,
       },
     ],

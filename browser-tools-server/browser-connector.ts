@@ -171,7 +171,11 @@ let selectedElement: any = null;
 
 // Add new state for tracking screenshot requests
 interface ScreenshotCallback {
-  resolve: (value: { data: string; path?: string }) => void;
+  resolve: (value: {
+    data: string;
+    path?: string;
+    autoPaste?: boolean;
+  }) => void;
   reject: (reason: Error) => void;
 }
 
@@ -592,6 +596,7 @@ interface ScreenshotMessage {
   data?: string;
   path?: string;
   error?: string;
+  autoPaste?: boolean;
 }
 
 export class BrowserConnector {
@@ -708,13 +713,18 @@ export class BrowserConnector {
           if (data.type === "screenshot-data" && data.data) {
             console.log("Received screenshot data");
             console.log("Screenshot path from extension:", data.path);
+            console.log("Auto-paste setting from extension:", data.autoPaste);
             // Get the most recent callback since we're not using requestId anymore
             const callbacks = Array.from(screenshotCallbacks.values());
             if (callbacks.length > 0) {
               const callback = callbacks[0];
               console.log("Found callback, resolving promise");
-              // Pass both the data and path to the resolver
-              callback.resolve({ data: data.data, path: data.path });
+              // Pass both the data, path and autoPaste to the resolver
+              callback.resolve({
+                data: data.data,
+                path: data.path,
+                autoPaste: data.autoPaste,
+              });
               screenshotCallbacks.clear(); // Clear all callbacks
             } else {
               console.log("No callbacks found for screenshot");
@@ -945,34 +955,36 @@ export class BrowserConnector {
       console.log("Browser Connector: Generated requestId:", requestId);
 
       // Create promise that will resolve when we get the screenshot data
-      const screenshotPromise = new Promise<{ data: string; path?: string }>(
-        (resolve, reject) => {
-          console.log(
-            `Browser Connector: Setting up screenshot callback for requestId: ${requestId}`
-          );
-          // Store callback in map
-          screenshotCallbacks.set(requestId, { resolve, reject });
-          console.log(
-            "Browser Connector: Current callbacks:",
-            Array.from(screenshotCallbacks.keys())
-          );
+      const screenshotPromise = new Promise<{
+        data: string;
+        path?: string;
+        autoPaste?: boolean;
+      }>((resolve, reject) => {
+        console.log(
+          `Browser Connector: Setting up screenshot callback for requestId: ${requestId}`
+        );
+        // Store callback in map
+        screenshotCallbacks.set(requestId, { resolve, reject });
+        console.log(
+          "Browser Connector: Current callbacks:",
+          Array.from(screenshotCallbacks.keys())
+        );
 
-          // Set timeout to clean up if we don't get a response
-          setTimeout(() => {
-            if (screenshotCallbacks.has(requestId)) {
-              console.log(
-                `Browser Connector: Screenshot capture timed out for requestId: ${requestId}`
-              );
-              screenshotCallbacks.delete(requestId);
-              reject(
-                new Error(
-                  "Screenshot capture timed out - no response from Chrome extension"
-                )
-              );
-            }
-          }, 10000);
-        }
-      );
+        // Set timeout to clean up if we don't get a response
+        setTimeout(() => {
+          if (screenshotCallbacks.has(requestId)) {
+            console.log(
+              `Browser Connector: Screenshot capture timed out for requestId: ${requestId}`
+            );
+            screenshotCallbacks.delete(requestId);
+            reject(
+              new Error(
+                "Screenshot capture timed out - no response from Chrome extension"
+              )
+            );
+          }
+        }, 10000);
+      });
 
       // Send screenshot request to extension
       const message = JSON.stringify({
@@ -987,9 +999,14 @@ export class BrowserConnector {
 
       // Wait for screenshot data
       console.log("Browser Connector: Waiting for screenshot data...");
-      const { data: base64Data, path: customPath } = await screenshotPromise;
+      const {
+        data: base64Data,
+        path: customPath,
+        autoPaste,
+      } = await screenshotPromise;
       console.log("Browser Connector: Received screenshot data, saving...");
       console.log("Browser Connector: Custom path from extension:", customPath);
+      console.log("Browser Connector: Auto-paste setting:", autoPaste);
 
       // Always prioritize the path from the Chrome extension
       let targetPath = customPath;
@@ -1049,9 +1066,9 @@ export class BrowserConnector {
       }
 
       // Check if running on macOS before executing AppleScript
-      if (os.platform() === "darwin") {
+      if (os.platform() === "darwin" && autoPaste === true) {
         console.log(
-          "Browser Connector: Running on macOS, executing AppleScript to paste into Cursor"
+          "Browser Connector: Running on macOS with auto-paste enabled, executing AppleScript to paste into Cursor"
         );
 
         // Create the AppleScript to copy the image to clipboard and paste into Cursor
@@ -1203,9 +1220,15 @@ export class BrowserConnector {
           }
         });
       } else {
-        console.log(
-          `Browser Connector: Not running on macOS, skipping AppleScript execution`
-        );
+        if (os.platform() === "darwin" && !autoPaste) {
+          console.log(
+            `Browser Connector: Running on macOS but auto-paste is disabled, skipping AppleScript execution`
+          );
+        } else {
+          console.log(
+            `Browser Connector: Not running on macOS, skipping AppleScript execution`
+          );
+        }
       }
 
       res.json({
