@@ -86,6 +86,7 @@ Once installed and configured, the system allows any compatible MCP client to:
 - Take screenshots
 - Analyze selected elements
 - Wipe logs stored in our MCP server
+- Run accessibility, performance, SEO, and best practices audits
 
 ## Compatibility
 
