@@ -517,7 +517,7 @@ app.get("/.identity", (req, res) => {
   res.json({
     port: PORT,
     name: "browser-tools-server",
-    version: "1.1.0",
+    version: "1.2.0",
     signature: "mcp-browser-connector-24x7",
   });
 });
@@ -1341,7 +1341,7 @@ export class BrowserConnector {
     this.app.get("/.identity", (req, res) => {
       res.json({
         signature: "mcp-browser-connector-24x7",
-        version: "1.1.1",
+        version: "1.2.0",
       });
     });
 
