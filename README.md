@@ -9,6 +9,7 @@ Read our [docs](https://browsertools.agentdesk.ai/) for the full installation, q
 ## Updates
 
 v1.2.0 is out! Here's a quick breakdown of the update:
+- You can now enable "Allow Auto-Paste into Cursor" within the DevTools panel. Screenshots will be automatically pasted into Cursor (just make sure to focus/click into the Agent input field in Cursor, otherwise it won't work!)
 - Integrated a suite of SEO, performance, accessibility, and best practice analysis tools via Lighthouse
 - Implemented a NextJS specific prompt used to improve SEO for a NextJS application
 - Added Debugger Mode as a tool which executes all debugging tools in a particular sequence, along with a prompt to improve reasoning
