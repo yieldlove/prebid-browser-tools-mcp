@@ -8,7 +8,16 @@ Read our [docs](https://browsertools.agentdesk.ai/) for the full installation, q
 
 ## Updates
 
-v1.2.0 is out! This includes
+v1.2.0 is out! Here's a quick breakdown of the update:
+- Integrated a suite of SEO, performance, accessibility, and best practice analysis tools via Lighthouse
+- Implemented a NextJS specific prompt used to improve SEO for a NextJS application
+- Added Debugger Mode as a tool which executes all debugging tools in a particular sequence, along with a prompt to improve reasoning
+- Added Audit Mode as a tool to execute all auditing tools in a particular sequence
+- Resolved Windows connectivity issues
+- Improved networking between BrowserTools server, extension and MCP server with host/port auto-discovery, auto-reconnect, and graceful shutdown mechanisms
+- Added ability to more easily exit out of the Browser Tools server with Ctrl+C
+
+  
 
 Please make sure to update the version in your IDE / MCP client as so:
 `npx @agentdeskai/browser-tools-mcp@1.2.0`
