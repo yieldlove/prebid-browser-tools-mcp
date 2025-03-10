@@ -667,6 +667,47 @@ export class BrowserConnector {
       });
     }
   }
+
+  // Add shutdown method
+  public shutdown() {
+    return new Promise<void>((resolve) => {
+      console.log("Shutting down WebSocket server...");
+
+      // Send close message to client if connection is active
+      if (this.activeConnection && this.activeConnection.readyState === WebSocket.OPEN) {
+        console.log("Notifying client to close connection...");
+        try {
+          this.activeConnection.send(JSON.stringify({ type: "server-shutdown" }));
+        } catch (err) {
+          console.error("Error sending shutdown message to client:", err);
+        }
+      }
+
+      // Set a timeout to force close after 2 seconds
+      const forceCloseTimeout = setTimeout(() => {
+        console.log("Force closing connections after timeout...");
+        if (this.activeConnection) {
+          this.activeConnection.terminate(); // Force close the connection
+          this.activeConnection = null;
+        }
+        this.wss.close();
+        resolve();
+      }, 2000);
+
+      // Close active WebSocket connection if exists
+      if (this.activeConnection) {
+        this.activeConnection.close(1000, "Server shutting down");
+        this.activeConnection = null;
+      }
+
+      // Close WebSocket server
+      this.wss.close(() => {
+        clearTimeout(forceCloseTimeout);
+        console.log("WebSocket server closed gracefully");
+        resolve();
+      });
+    });
+  }
 }
 
 // Move the server creation before BrowserConnector instantiation
@@ -677,10 +718,41 @@ const server = app.listen(PORT, () => {
 // Initialize the browser connector with the existing app AND server
 const browserConnector = new BrowserConnector(app, server);
 
-// Handle shutdown gracefully
-process.on("SIGINT", () => {
-  server.close(() => {
-    console.log("Server shut down");
+// Handle shutdown gracefully with improved error handling
+process.on("SIGINT", async () => {
+  console.log("\nReceived SIGINT signal. Starting graceful shutdown...");
+
+  try {
+    // First shutdown WebSocket connections
+    await browserConnector.shutdown();
+
+    // Then close the HTTP server
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => {
+        if (err) {
+          console.error("Error closing HTTP server:", err);
+          reject(err);
+        } else {
+          console.log("HTTP server closed successfully");
+          resolve();
+        }
+      });
+    });
+
+    // Clear all logs
+    clearAllLogs();
+
+    console.log("Shutdown completed successfully");
     process.exit(0);
-  });
+  } catch (error) {
+    console.error("Error during shutdown:", error);
+    // Force exit in case of error
+    process.exit(1);
+  }
+});
+
+// Also handle SIGTERM
+process.on("SIGTERM", () => {
+  console.log("\nReceived SIGTERM signal");
+  process.emit("SIGINT");
 });

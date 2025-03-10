@@ -536,6 +536,18 @@ function setupWebSocket() {
       const message = JSON.parse(event.data);
       console.log("Chrome Extension: Received WebSocket message:", message);
 
+      if (message.type === "server-shutdown") {
+        console.log("Chrome Extension: Received server shutdown signal");
+        // Clear any reconnection attempts
+        if (wsReconnectTimeout) {
+          clearTimeout(wsReconnectTimeout);
+          wsReconnectTimeout = null;
+        }
+        // Close the connection gracefully
+        ws.close(1000, "Server shutting down");
+        return;
+      }
+
       if (message.type === "take-screenshot") {
         console.log("Chrome Extension: Taking screenshot...");
         // Capture screenshot of the current tab
@@ -574,10 +586,7 @@ function setupWebSocket() {
         });
       }
     } catch (error) {
-      console.error(
-        "Chrome Extension: Error processing WebSocket message:",
-        error
-      );
+      console.error("Chrome Extension: Error processing WebSocket message:", error);
     }
   };
 
@@ -589,11 +598,17 @@ function setupWebSocket() {
     }
   };
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
     console.log(
-      "Chrome Extension: WebSocket disconnected, attempting to reconnect..."
+      `Chrome Extension: WebSocket disconnected (${event.code}: ${event.reason})`
     );
-    wsReconnectTimeout = setTimeout(setupWebSocket, WS_RECONNECT_DELAY);
+    // Only attempt to reconnect if it wasn't a server shutdown
+    if (event.reason !== "Server shutting down") {
+      console.log("Chrome Extension: Attempting to reconnect...");
+      wsReconnectTimeout = setTimeout(setupWebSocket, WS_RECONNECT_DELAY);
+    } else {
+      console.log("Chrome Extension: Server shutdown detected, not reconnecting");
+    }
   };
 
   ws.onerror = (error) => {
