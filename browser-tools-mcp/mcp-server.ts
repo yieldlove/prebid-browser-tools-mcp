@@ -8,7 +8,7 @@ import fs from "fs";
 // Create the MCP server
 const server = new McpServer({
   name: "Browser Tools MCP",
-  version: "1.1.1",
+  version: "1.2.0",
 });
 
 // Track the discovered server connection

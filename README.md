@@ -8,13 +8,13 @@ Read our [docs](https://browsertools.agentdesk.ai/) for the full installation, q
 
 ## Updates
 
-v1.1.0 is out! This includes several bug fixes for logging + screenshots.
+v1.2.0 is out! This includes
 
 Please make sure to update the version in your IDE / MCP client as so:
-`npx @agentdeskai/browser-tools-mcp@1.1.0`
+`npx @agentdeskai/browser-tools-mcp@1.2.0`
 
 Also make sure to download the latest version of the chrome extension here:
-[v1.1.0 BrowserToolsMCP Chrome Extension](https://github.com/AgentDeskAI/browser-tools-mcp/releases/download/v1.1.0/chrome-extension-v1-1-0.zip)
+[v1.2.0 BrowserToolsMCP Chrome Extension](https://github.com/AgentDeskAI/browser-tools-mcp/releases/download/v1.1.0/chrome-extension-v1-1-0.zip)
 
 From there you can run the local node server as usual like so:
 `npx @agentdeskai/browser-tools-server`
@@ -22,6 +22,122 @@ From there you can run the local node server as usual like so:
 And once you've opened your chrome dev tools, logs should be getting sent to your server!
 
 If you have any questions or issues, feel free to open an issue ticket! And if you have any ideas to make this better, feel free to reach out or open an issue ticket with an enhancement tag or reach out to me at [@tedx_ai on x](https://x.com/tedx_ai)
+
+## Full Update Notes:
+
+Coding agents like Cursor can run these audits against the current page seamlessly. By leveraging Puppeteer and the Lighthouse npm library, BrowserTools MCP can now:
+
+- Evaluate pages for WCAG compliance
+- Identify performance bottlenecks
+- Flag on-page SEO issues
+- Check adherence to web development best practices
+- Review NextJS specific issues with SEO
+
+...all without leaving your IDE 🎉
+
+---
+
+## 🔑 Key Additions
+
+| Audit Type         | Description                                                                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Accessibility**  | WCAG-compliant checks for color contrast, missing alt text, keyboard navigation traps, ARIA attributes, and more.                        |
+| **Performance**    | Lighthouse-driven analysis of render-blocking resources, excessive DOM size, unoptimized images, and other factors affecting page speed. |
+| **SEO**            | Evaluates on-page SEO factors (like metadata, headings, and link structure) and suggests improvements for better search visibility.      |
+| **Best Practices** | Checks for general best practices in web development.                                                                                    |
+| **NextJS Audit**   | Injects a prompt used to perform a NextJS audit.                                                                                         |
+| **Audit Mode**     | Runs all audting tools in a sequence.                                                                                                    |
+| **Debugger Mode**  | Runs all debugging tools in a sequence.                                                                                                  |
+
+---
+
+## 🛠️ Using Audit Tools
+
+### ✅ **Before You Start**
+
+Ensure you have:
+
+- An **active tab** in your browser
+- The **BrowserTools extension enabled**
+
+### ▶️ **Running Audits**
+
+**Headless Browser Automation**:  
+ Puppeteer automates a headless Chrome instance to load the page and collect audit data, ensuring accurate results even for SPAs or content loaded via JavaScript.
+
+The headless browser instance remains active for **60 seconds** after the last audit call to efficiently handle consecutive audit requests.
+
+**Structured Results**:  
+ Each audit returns results in a structured JSON format, including overall scores and detailed issue lists. This makes it easy for MCP-compatible clients to interpret the findings and present actionable insights.
+
+The MCP server provides tools to run audits on the current page. Here are example queries you can use to trigger them:
+
+#### Accessibility Audit (`runAccessibilityAudit`)
+
+Ensures the page meets accessibility standards like WCAG.
+
+> **Example Queries:**
+>
+> - "Are there any accessibility issues on this page?"
+> - "Run an accessibility audit."
+> - "Check if this page meets WCAG standards."
+
+#### Performance Audit (`runPerformanceAudit`)
+
+Identifies performance bottlenecks and loading issues.
+
+> **Example Queries:**
+>
+> - "Why is this page loading so slowly?"
+> - "Check the performance of this page."
+> - "Run a performance audit."
+
+#### SEO Audit (`runSEOAudit`)
+
+Evaluates how well the page is optimized for search engines.
+
+> **Example Queries:**
+>
+> - "How can I improve SEO for this page?"
+> - "Run an SEO audit."
+> - "Check SEO on this page."
+
+#### Best Practices Audit (`runBestPracticesAudit`)
+
+Checks for general best practices in web development.
+
+> **Example Queries:**
+>
+> - "Run a best practices audit."
+> - "Check best practices on this page."
+> - "Are there any best practices issues on this page?"
+
+#### Audit Mode (`runAuditMode`)
+
+Runs all audits in a particular sequence. Will run a NextJS audit if the framework is detected.
+
+> **Example Queries:**
+>
+> - "Run audit mode."
+> - "Enter audit mode."
+
+#### NextJS Audits (`runNextJSAudit`)
+
+Checks for best practices and SEO improvements for NextJS applications
+
+> **Example Queries:**
+>
+> - "Run a NextJS audit."
+> - "Run a NextJS audit, I'm using app router."
+> - "Run a NextJS audit, I'm using page router."
+
+#### Debugger Mode (`runDebuggerMode`)
+
+Runs all debugging tools in a particular sequence
+
+> **Example Queries:**
+>
+> - "Enter debugger mode."
 
 ## Architecture
 
