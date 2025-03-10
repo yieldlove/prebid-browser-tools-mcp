@@ -29,7 +29,7 @@ Also make sure to download the latest version of the chrome extension here:
 From there you can run the local node server like so:
 `npx @agentdeskai/browser-tools-server@1.2.0`
 
-Make sure to specify version 1.2.0 since NPX caching may prevent you from getting the latest version!
+Make sure to specify version 1.2.0 since NPX caching may prevent you from getting the latest version! You should only have to do this once for every update. After you do it once, you should be on the latest version.
 
 And once you've opened your chrome dev tools, logs should be getting sent to your server 🦾
 
