@@ -24,7 +24,7 @@ Please make sure to update the version in your IDE / MCP client as so:
 `npx @agentdeskai/browser-tools-mcp@1.2.0`
 
 Also make sure to download the latest version of the chrome extension here:
-[v1.2.0 BrowserToolsMCP Chrome Extension](https://github.com/AgentDeskAI/browser-tools-mcp/releases/download/v1.1.0/chrome-extension-v1-1-0.zip)
+[v1.2.0 BrowserToolsMCP Chrome Extension](https://github.com/AgentDeskAI/browser-tools-mcp/releases/download/v1.2.0/BrowserTools-1.2.0-extension.zip)
 
 From there you can run the local node server like so:
 `npx @agentdeskai/browser-tools-server@1.2.0`
