@@ -946,6 +946,18 @@ async function setupWebSocket() {
         // Don't log heartbeat responses to reduce noise
         if (message.type !== "heartbeat-response") {
           console.log("Chrome Extension: Received WebSocket message:", message);
+
+          if (message.type === "server-shutdown") {
+            console.log("Chrome Extension: Received server shutdown signal");
+            // Clear any reconnection attempts
+            if (wsReconnectTimeout) {
+              clearTimeout(wsReconnectTimeout);
+              wsReconnectTimeout = null;
+            }
+            // Close the connection gracefully
+            ws.close(1000, "Server shutting down");
+            return;
+          }
         }
 
         if (message.type === "heartbeat-response") {
