@@ -58,7 +58,7 @@ Coding agents like Cursor can run these audits against the current page seamless
 | **SEO**            | Evaluates on-page SEO factors (like metadata, headings, and link structure) and suggests improvements for better search visibility.      |
 | **Best Practices** | Checks for general best practices in web development.                                                                                    |
 | **NextJS Audit**   | Injects a prompt used to perform a NextJS audit.                                                                                         |
-| **Audit Mode**     | Runs all audting tools in a sequence.                                                                                                    |
+| **Audit Mode**     | Runs all auditing tools in a sequence.                                                                                                   |
 | **Debugger Mode**  | Runs all debugging tools in a sequence.                                                                                                  |
 
 ---
