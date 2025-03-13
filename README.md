@@ -6,6 +6,10 @@ This application is a powerful browser monitoring and interaction tool that enab
 
 Read our [docs](https://browsertools.agentdesk.ai/) for the full installation, quickstart and contribution guides.
 
+## Roadmap
+
+Check out our project roadmap here: [Github Roadmap / Project Board](https://github.com/orgs/AgentDeskAI/projects/1/views/1)
+
 ## Updates
 
 v1.2.0 is out! Here's a quick breakdown of the update:
