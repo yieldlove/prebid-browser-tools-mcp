@@ -45,17 +45,6 @@ export function removeLevelField(logs: any[]): any[] {
   });
 }
 
-// Truncator: rename 'level' to 'lv'
-export function shortenLevelField(logs: any[]): any[] {
-  return logs.map((log) => {
-    if ('level' in log) {
-      const { level, ...rest } = log;
-      return { ...rest, lv: level };
-    }
-    return { ...log };
-  });
-}
-
 // Truncator: convert 'timestamp' to 'time' in mm:ss.milliseconds
 export function convertTimestampToTime(logs: any[]): any[] {
   return logs.map((log) => {
