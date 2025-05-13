@@ -37,6 +37,14 @@ export function removeTypeField(logs: any[]): any[] {
   });
 }
 
+// Truncator: remove 'level' field from each log
+export function removeLevelField(logs: any[]): any[] {
+  return logs.map((log) => {
+    const { level, ...rest } = log;
+    return { ...rest };
+  });
+}
+
 // Truncator: rename 'level' to 'lv'
 export function shortenLevelField(logs: any[]): any[] {
   return logs.map((log) => {
@@ -62,6 +70,17 @@ export function convertTimestampToTime(logs: any[]): any[] {
         pad(date.getMilliseconds(), 3);
       const { timestamp, ...rest } = log;
       return { ...rest, time };
+    }
+    return { ...log };
+  });
+}
+
+// Truncator: rename 'message' to 'msg'
+export function shortenMessageField(logs: any[]): any[] {
+  return logs.map((log) => {
+    if ('message' in log) {
+      const { message, ...rest } = log;
+      return { ...rest, msg: message };
     }
     return { ...log };
   });

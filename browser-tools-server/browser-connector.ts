@@ -24,8 +24,9 @@ import {
   truncateForPrebidLogs,
   truncateInlineCssStyles,
   removeTypeField,
-  shortenLevelField,
-  convertTimestampToTime
+  removeLevelField,
+  convertTimestampToTime,
+  shortenMessageField
 } from "./log-processors.js";
 
 /**
@@ -479,8 +480,9 @@ app.get("/console-logs", (req, res) => {
   let logs = truncateForPrebidLogs(consoleLogs);
   logs = truncateInlineCssStyles(logs);
   logs = removeTypeField(logs);
-  logs = shortenLevelField(logs);
+  logs = removeLevelField(logs);
   logs = convertTimestampToTime(logs);
+  logs = shortenMessageField(logs);
   const truncatedLogs = truncateLogsToQueryLimit(logs);
   res.json(truncatedLogs);
 });
@@ -489,8 +491,9 @@ app.get("/console-errors", (req, res) => {
   let logs = truncateForPrebidLogs(consoleErrors);
   logs = truncateInlineCssStyles(logs);
   logs = removeTypeField(logs);
-  logs = shortenLevelField(logs);
+  logs = removeLevelField(logs);
   logs = convertTimestampToTime(logs);
+  logs = shortenMessageField(logs);
   const truncatedLogs = truncateLogsToQueryLimit(logs);
   res.json(truncatedLogs);
 });
