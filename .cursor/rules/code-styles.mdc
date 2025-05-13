@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+- If the type of a parameter is not defined in the existing codes, no need to define the type.
