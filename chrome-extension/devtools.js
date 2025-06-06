@@ -12,6 +12,7 @@ let settings = {
   serverHost: "localhost", // Default server host
   serverPort: 3025, // Default server port
   allowAutoPaste: false, // Default auto-paste setting
+  networkFilter: "tracking.v2,cdn-a.yieldlove.com,securepubads.g.doubleclick.net,metatag/live/,hb.adscale.de/dsh,metatag/live/hb.adscale.de/dsh"
 };
 
 // Keep track of debugger state
@@ -47,8 +48,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle connection status updates from page refreshes
   if (message.type === "CONNECTION_STATUS_UPDATE") {
     console.log(
-      `DevTools received connection status update: ${
-        message.isConnected ? "Connected" : "Disconnected"
+      `DevTools received connection status update: ${message.isConnected ? "Connected" : "Disconnected"
       }`
     );
 
@@ -314,6 +314,7 @@ async function sendToBrowserConnector(logData) {
       queryLimit: settings.queryLimit,
       showRequestHeaders: settings.showRequestHeaders,
       showResponseHeaders: settings.showResponseHeaders,
+      networkFilter: settings.networkFilter,
     },
   };
 

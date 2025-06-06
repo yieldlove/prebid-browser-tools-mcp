@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <style>
         body {
@@ -8,63 +9,78 @@
             background-color: #282828;
             color: #fff;
         }
+
         .endpoint-list {
             margin: 16px 0;
         }
+
         .endpoint-item {
             display: flex;
             gap: 8px;
             margin-bottom: 8px;
             align-items: center;
         }
+
         .endpoint-form {
             display: flex;
             gap: 8px;
             margin-bottom: 16px;
             align-items: center;
         }
+
         button {
             padding: 4px 8px;
         }
+
         input {
             padding: 4px;
         }
+
         .status-indicator {
             width: 8px;
             height: 8px;
             border-radius: 50%;
             display: inline-block;
         }
+
         .status-connected {
             background: #4caf50;
         }
+
         .status-disconnected {
             background: #f44336;
         }
+
         .form-group {
             margin-bottom: 16px;
         }
+
         .form-group label {
             display: block;
             margin-bottom: 4px;
         }
+
         .checkbox-group {
             margin-bottom: 8px;
         }
+
         .checkbox-group-2 {
             margin-bottom: 6px;
         }
+
         input[type="number"],
         input[type="text"] {
             padding: 4px;
             width: 200px;
         }
+
         .settings-section {
             border: 1px solid #ccc;
             padding: 16px;
             margin-bottom: 16px;
             border-radius: 4px;
         }
+
         .settings-header {
             display: flex;
             align-items: center;
@@ -72,29 +88,36 @@
             cursor: pointer;
             user-select: none;
         }
+
         .settings-header h3 {
             margin: 0;
         }
+
         .settings-content {
             display: none;
             margin-top: 16px;
         }
+
         .settings-content.visible {
             display: block;
         }
+
         .chevron {
             width: 20px;
             height: 20px;
             transition: transform 0.3s ease;
         }
+
         .chevron.open {
             transform: rotate(180deg);
         }
+
         .quick-actions {
             display: flex;
             gap: 8px;
             margin-bottom: 16px;
         }
+
         .action-button {
             background-color: #4a4a4a;
             color: white;
@@ -104,17 +127,21 @@
             cursor: pointer;
             transition: background-color 0.2s;
         }
+
         .action-button:hover {
             background-color: #5a5a5a;
         }
+
         .action-button.danger {
             background-color: #f44336;
         }
+
         .action-button.danger:hover {
             background-color: #d32f2f;
         }
     </style>
 </head>
+
 <body>
     <div class="settings-section">
         <h3>Quick Actions</h3>
@@ -137,7 +164,8 @@
     <div class="settings-section">
         <h3>Screenshot Settings</h3>
         <div class="form-group">
-            <label for="screenshot-path">Provide a directory to save screenshots to (by default screenshots will be saved to your downloads folder if no path is provided)</label>
+            <label for="screenshot-path">Provide a directory to save screenshots to (by default screenshots will be
+                saved to your downloads folder if no path is provided)</label>
             <input type="text" id="screenshot-path" placeholder="/path/to/screenshots">
         </div>
     </div>
@@ -167,13 +195,26 @@
     </div>
 
     <div class="settings-section">
+        <h3>Network Settings</h3>
+        <div class="form-group">
+            <label for="network-settings">
+                Requesting filtering
+            </label>
+            <input type="text" style="width: 100%;" placeholder="cdn-a.yieldlove.com"
+                value="cdn-a.yieldlove.com,securepubads.g.doubleclick.net,metatag/live/,hb.adscale.de/dsh,metatag/live/hb.adscale.de/dsh"
+                id="network-settings">
+        </div>
+    </div>
+
+    <div class="settings-section">
         <div class="settings-header" id="advanced-settings-header">
             <h3>Advanced Settings</h3>
-            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
         </div>
-        
+
         <div class="settings-content" id="advanced-settings-content">
             <div class="form-group">
                 <label for="log-limit">Log Limit (number of logs)</label>
@@ -213,4 +254,5 @@
 
     <script src="panel.js"></script>
 </body>
-</html> 
+
+</html>
