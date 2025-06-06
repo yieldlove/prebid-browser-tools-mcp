@@ -20,6 +20,7 @@ import {
 } from "./lighthouse/index.js";
 import * as net from "net";
 import { runBestPracticesAudit } from "./lighthouse/best-practices.js";
+import { isUrlMatch, truncateString } from "./utils/helper-func.js";
 
 /**
  * Converts a file path to the appropriate format for the current platform
@@ -164,6 +165,7 @@ let currentSettings = {
   screenshotPath: getDefaultDownloadsFolder(),
   // Add server host configuration
   serverHost: process.env.SERVER_HOST || "0.0.0.0", // Default to all interfaces
+  networkFilter: "tracking.v2,cdn-a.yieldlove.com,securepubads.g.doubleclick.net,metatag/live/,hb.adscale.de/dsh",
 };
 
 // Add new storage for selected element
@@ -417,12 +419,19 @@ app.post("/extension-log", (req, res) => {
       }
       break;
     case "network-request":
+      data.url = truncateString(data.url, 80)
+      data.responseBody = truncateString(data.responseBody, 1000)
+      data.requestBody = truncateString(data.requestBody, 1000)
+
       const logEntry = {
         url: data.url,
-        method: data.method,
         status: data.status,
         timestamp: data.timestamp,
       };
+
+      const isAddLog = currentSettings.networkFilter.length > 0 ? applyClientNetworkFilter(data.url, currentSettings.networkFilter) : true
+      if (!isAddLog) return
+
       console.log("Adding network request:", logEntry);
 
       // Route network requests based on status code
@@ -1035,8 +1044,7 @@ export class BrowserConnector {
           err
         );
         throw new Error(
-          `Failed to create screenshot directory: ${
-            err instanceof Error ? err.message : String(err)
+          `Failed to create screenshot directory: ${err instanceof Error ? err.message : String(err)
           }`
         );
       }
@@ -1059,8 +1067,7 @@ export class BrowserConnector {
           err
         );
         throw new Error(
-          `Failed to save screenshot: ${
-            err instanceof Error ? err.message : String(err)
+          `Failed to save screenshot: ${err instanceof Error ? err.message : String(err)
           }`
         );
       }
@@ -1519,3 +1526,9 @@ export class BrowserConnector {
   console.error("Unhandled error during server startup:", err);
   process.exit(1);
 });
+
+function applyClientNetworkFilter(url: string, networkFilter: string) {
+  const urlPatterns = networkFilter.trim().split(',')
+  return urlPatterns.some((urlPattern: string) => isUrlMatch(urlPattern, url));
+
+}

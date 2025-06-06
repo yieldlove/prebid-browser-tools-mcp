@@ -11,6 +11,7 @@ let settings = {
   serverHost: "localhost",
   serverPort: 3025,
   allowAutoPaste: false, // Default auto-paste setting
+  networkFilter: "tracking.v2,cdn-a.yieldlove.com,tracking.v2,securepubads.g.doubleclick.net/gampad/,metatag/live/,hb.adscale.de/dsh",
 };
 
 // Track connection status
@@ -326,7 +327,7 @@ const testConnectionButton = document.getElementById("test-connection");
 const connectionStatusDiv = document.getElementById("connection-status");
 const statusIcon = document.getElementById("status-icon");
 const statusText = document.getElementById("status-text");
-
+const networkFilterInput = document.getElementById("network-settings");
 // Initialize collapsible advanced settings
 const advancedSettingsHeader = document.getElementById(
   "advanced-settings-header"
@@ -356,6 +357,7 @@ function updateUIFromSettings() {
   serverHostInput.value = settings.serverHost;
   serverPortInput.value = settings.serverPort;
   allowAutoPasteCheckbox.checked = settings.allowAutoPaste;
+  networkFilterInput.value = settings.networkFilter;
 }
 
 // Save settings
@@ -417,6 +419,11 @@ serverPortInput.addEventListener("change", (e) => {
   saveSettings();
   // Automatically test connection when port is changed
   testConnection(settings.serverHost, settings.serverPort);
+});
+
+networkFilterInput.addEventListener("change", (e) => {
+  settings.networkFilter = e.target.value;
+  saveSettings();
 });
 
 // Add event listener for auto-paste checkbox
