@@ -28,6 +28,10 @@ import {
   shortenMessageField
 } from "./log-processors.js";
 
+// Store bid requests in memory
+//todo add bid request
+let bidRequestsStorage: { [auctionId: string]: any[] } = {}
+
 /**
  * Converts a file path to the appropriate format for the current platform
  * Handles Windows, WSL, macOS and Linux path formats
@@ -486,6 +490,25 @@ app.post("/extension-log", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.post("/bid-requests/:auctionId", (req, res) => {
+  const auctionId = req.params.auctionId;
+  if (!bidRequestsStorage[auctionId]) {
+    bidRequestsStorage[auctionId] = [];
+  }
+
+  const bidRequest = JSON.parse(JSON.stringify(req.body));
+
+  bidRequestsStorage[auctionId].push(bidRequest);
+
+  console.log(`Bid request added for auction ${auctionId}:`, req.body);
+
+  res.json({
+    status: "201",
+    auctionId,
+    body: req.body.bidRequest
+  });
+});
+
 // Update GET endpoints to use the new function
 app.get("/console-logs", (req, res) => {
   let logs = truncateForPrebidLogs(consoleLogs);
@@ -570,6 +593,7 @@ function clearAllLogs() {
   networkErrors.length = 0;
   networkSuccess.length = 0;
   allXhr.length = 0;
+  bidRequestsStorage = {};
   selectedElement = null;
   console.log("All logs have been wiped");
 }
@@ -623,6 +647,37 @@ app.post("/current-url", (req, res) => {
     console.log("No URL provided in current-url request");
     res.status(400).json({ status: "error", message: "No URL provided" });
   }
+});
+
+// Bid related endpoints
+// Post memory heavy bid requests
+app.get("/bid-requests/", (_, res) => {
+  const auctionIds = Object.keys(bidRequestsStorage)
+  if (auctionIds.length === 0) {
+    res.status(404).json({
+      status: "error",
+      message: "No bid requests found for any auction"
+    });
+    return
+  }
+
+  const response = auctionIds.map((auctionId) => ({ [auctionId]: bidRequestsStorage[auctionId].length }))
+
+  res.json(response);
+});
+
+app.get("/bid-requests/:auctionId", (req, res) => {
+  const auctionId = req.params.auctionId;
+
+  if (!bidRequestsStorage[auctionId]) {
+    res.status(404).json({
+      status: "error",
+      message: "No bid requests found for this auction ID"
+    });
+    return
+  }
+
+  res.json(bidRequestsStorage[auctionId]);
 });
 
 // Add endpoint to get the current URL

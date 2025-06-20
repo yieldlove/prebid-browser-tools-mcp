@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import path from "path";
 import fs from "fs";
+import { z } from "zod";
 
 // Create the MCP server
 const server = new McpServer({
@@ -1441,6 +1442,32 @@ server.tool(
           ],
         };
       }
+    });
+  }
+);
+
+// We'll define our tools that retrieve data from the browser connector
+server.tool(
+  "getBidRequests",
+  "Retrieves bid requests for an auction. If auction ID is omitted, it will retrieve all available bid requests per auction.",
+  {
+    auctionId: z.string().optional(),
+  },
+  async ({ auctionId }) => {
+    return await withServerConnection(async () => {
+      const url = auctionId
+        ? `http://${discoveredHost}:${discoveredPort}/bid-requests/${auctionId}`
+        : `http://${discoveredHost}:${discoveredPort}/bid-requests`;
+      const response = await fetch(url);
+      const json = await response.json();
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(json, null, 2),
+          },
+        ],
+      };
     });
   }
 );

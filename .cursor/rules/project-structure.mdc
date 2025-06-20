@@ -8,3 +8,26 @@ alwaysApply: true
     - `browser-tools-server` is a MCP server tool. It stores logs, payloads for pages which are sent by the `chrome-extension`. It also processes raw data for Prebid.js.
     - `chrome-extension` is a extension to collects raw logs and payloads from web pages.
 - Always use context7 to get documents for implementing MCP tools.
+
+
+
+<!-- WRAPPER HEALTH CHECKS -->
+Continue if the user has explicitly asked for a `wrapper health check` and `health check`.
+
+- Below are critical wrapper functionalites that must work in order not to break the bussiness logic.
+    -  Bid requests - The bid request that is sent to the SSPs via Prebid
+        -   Essential bid properties:
+            1. `gdprConsent` - Contains the unique consent string of the user, must be populated if GDPR applies for the user (see the boolean of the `gdprApplies` property)
+            2. `bids` - Array of bids to send, length must not be 0.
+            3. `bids[index].schain` - The Supply Chain Object tracks the path of an impression and prevents unauthorized reselling. It provides legitimacy for the buyer that the impression was handled by legitimate parties. This field must exist.
+            4. `bids[index].userId` - Used to identify users across different websites. Unless it's a user first visit, this field will always be populated.
+        -   [AI Instruction]: During the below operations you are allowed to run mcp tool `getBidRequests` yourself. 
+            First invoke the browser mcp tool `getBidRequests` WITHOUT any argument, I repeat without any argument. An array with the following schema should be returned: 
+            `{ [auctionId: string]: number }`. If an error is returned, exit and inform the user. If the list is empty, exit and inform the user.
+            
+            Next grab a random auction id from the list (do not be lazy and take the first one), print it to standard outout and store it in memory. Invoke `getBidRequests` again but this time use the auction id stored in memory from the previous step. An array of bids from each bidder should be returned, if not exit and inform the user.
+
+            Index a random bid object and verify that the `auctionId` of the bid is the same as the one stored in memory. For the same bid object analyze the bid according to the above definition: `Essential bid properties` and print a schema representation of the property evaluated, for each operation, so that the user can manually verify your reasoning.
+
+            Assert if core functionality is ok based on given premises and inform the user.
+<!-- END -->

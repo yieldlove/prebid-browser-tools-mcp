@@ -2,10 +2,10 @@
 
 // Store settings with defaults
 let settings = {
-  logLimit: 50,
-  queryLimit: 30000,
-  stringSizeLimit: 500,
-  maxLogSize: 20000,
+  logLimit: 5000000000,
+  queryLimit: 3000000000,
+  stringSizeLimit: 500000000,
+  maxLogSize: 200000000000,
   showRequestHeaders: false,
   showResponseHeaders: false,
   screenshotPath: "", // Add new setting for screenshot path
@@ -20,6 +20,7 @@ let attachDebuggerRetries = 0;
 const currentTabId = chrome.devtools.inspectedWindow.tabId;
 const MAX_ATTACH_RETRIES = 3;
 const ATTACH_RETRY_DELAY = 1000; // 1 second
+
 
 // Load saved settings on startup
 chrome.storage.local.get(["browserConnectorSettings"], (result) => {
@@ -118,7 +119,6 @@ function truncateStringsInData(data, maxLength, depth = 0, path = "") {
     return "[MAX_DEPTH_EXCEEDED]";
   }
 
-  console.log(`Processing at path: ${path}, type:`, typeof data);
 
   if (typeof data === "string") {
     if (data.length > maxLength) {
@@ -131,7 +131,6 @@ function truncateStringsInData(data, maxLength, depth = 0, path = "") {
   }
 
   if (Array.isArray(data)) {
-    console.log(`Processing array at path ${path} with length:`, data.length);
     return data.map((item, index) =>
       truncateStringsInData(item, maxLength, depth + 1, `${path}[${index}]`)
     );
@@ -494,6 +493,7 @@ chrome.devtools.network.onRequestFinished.addListener((request) => {
   }
 });
 
+
 // Helper function to attach debugger
 async function attachDebugger() {
   // First check if we're already attached to this tab
@@ -616,6 +616,53 @@ const consoleMessageListener = (source, method, params) => {
               return arg.value;
             } else if (arg.type === "object" && arg.preview) {
               // For objects, include their preview or description
+              const objSize = JSON.stringify(arg.preview).length;
+
+              console.log("Large object detected, size:", objSize, "preview:", arg.preview.properties, arg);
+              isBidRequest(arg.preview);
+              // check if preview is what we are looking for
+              function isBidRequest(objectPreview) {
+                if (objectPreview.properties) {
+                  const isArray = Array.isArray(objectPreview.properties);
+                  if (isArray) {
+                    // console.log("objectPreview.properties[0].value[0]", objectPreview.properties[0].value[0])
+                    // console.log("objectPreview.properties", JSON.stringify(objectPreview.properties))
+                    for (const property of objectPreview.properties) {
+                      console.log("LOOP property", JSON.stringify(property.value))
+                    }
+                    
+                    const keys = Object.keys(JSON.parse(JSON.stringify(objectPreview.properties?.[0]?.value[0] ?? {})))
+                    const isBidRequest = keys.includes("auctionId") && keys.includes("bids");
+
+                    return isBidRequest ? console.log("Bid request" + JSON.stringify(objectPreview.properties?.value[0])) :false
+                  }
+                }
+              }
+
+              if (arg.type === "object" && arg.objectId) {
+                chrome.debugger.sendCommand(
+                  { tabId: currentTabId },
+                  "Runtime.getProperties",
+                  { objectId: arg.objectId, ownProperties: true },
+                  (result) => {
+                    if (chrome.runtime.lastError) {
+                      console.error("Failed to get object properties:", chrome.runtime.lastError);
+                    } else {
+                      // Reconstruct a plain object from the properties
+                      const fullObj = {};
+                      result.result.forEach((prop) => {
+                        if (prop.enumerable && prop.value) {
+                          fullObj[prop.name] = prop.value.value;
+                        }
+                      });
+                      console.log("Full object reconstructed:", fullObj);
+                      // You can now use or stringify fullObj as needed
+                      console.log("Full object as JSON:", JSON.stringify(fullObj, null, 2));
+                    }
+                  }
+                );
+              }
+
               return JSON.stringify(arg.preview);
             } else if (arg.description) {
               // Some objects have descriptions
@@ -1127,3 +1174,8 @@ window.addEventListener("unload", () => {
     clearTimeout(wsReconnectTimeout);
   }
 });
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log("Background script received message:", message, sender, sendResponse);
+});
+
