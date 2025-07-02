@@ -23,7 +23,7 @@ import { runBestPracticesAudit } from "./lighthouse/best-practices.js";
 
 // Store bid requests in memory
 //todo add bid request
-let bidRequestsStorage: { [auctionId: string]: any[] } = {}
+let bidRequests: { [auctionId: string]: any[] } = {}
 
 /**
  * Converts a file path to the appropriate format for the current platform
@@ -473,13 +473,13 @@ app.post("/extension-log", (req, res) => {
 
 app.post("/bid-requests/:auctionId", (req, res) => {
   const auctionId = req.params.auctionId;
-  if (!bidRequestsStorage[auctionId]) {
-    bidRequestsStorage[auctionId] = [];
+  if (!bidRequests[auctionId]) {
+    bidRequests[auctionId] = [];
   }
 
   const bidRequest = JSON.parse(JSON.stringify(req.body));
 
-  bidRequestsStorage[auctionId].push(bidRequest);
+  bidRequests[auctionId].push(bidRequest);
 
   console.log(`Bid request added for auction ${auctionId}:`, req.body);
 
@@ -553,7 +553,7 @@ function clearAllLogs() {
   networkErrors.length = 0;
   networkSuccess.length = 0;
   allXhr.length = 0;
-  bidRequestsStorage = {};
+  bidRequests = {};
   selectedElement = null;
   console.log("All logs have been wiped");
 }
@@ -612,7 +612,7 @@ app.post("/current-url", (req, res) => {
 // Bid related endpoints
 // Post memory heavy bid requests
 app.get("/bid-requests/", (_, res) => {
-  const auctionIds = Object.keys(bidRequestsStorage)
+  const auctionIds = Object.keys(bidRequests)
   if (auctionIds.length === 0) {
     res.status(404).json({
       status: "error",
@@ -621,7 +621,7 @@ app.get("/bid-requests/", (_, res) => {
     return
   }
 
-  const response = auctionIds.map((auctionId) => ({ [auctionId]: bidRequestsStorage[auctionId].length }))
+  const response = auctionIds.map((auctionId) => ({ [auctionId]: bidRequests[auctionId].length }))
 
   res.json(response);
 });
@@ -629,7 +629,7 @@ app.get("/bid-requests/", (_, res) => {
 app.get("/bid-requests/:auctionId", (req, res) => {
   const auctionId = req.params.auctionId;
 
-  if (!bidRequestsStorage[auctionId]) {
+  if (!bidRequests[auctionId]) {
     res.status(404).json({
       status: "error",
       message: "No bid requests found for this auction ID"
@@ -637,7 +637,7 @@ app.get("/bid-requests/:auctionId", (req, res) => {
     return
   }
 
-  res.json(bidRequestsStorage[auctionId]);
+  res.json(bidRequests[auctionId]);
 });
 
 // Add endpoint to get the current URL
