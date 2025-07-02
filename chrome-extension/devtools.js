@@ -1,5 +1,19 @@
 // devtools.js
 
+// Auction id regex
+const auctionIdRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+// YL large logs search patterns
+const YL_LARGE_LOGS = Object.freeze({
+  BID_REQUESTS: { searchString: "Bids Requested for Auction with id", endpoint: "bid-requests", auctionIdRequired: true },
+  BIDS_RECEIVED: { searchString: "Bids Received for Auction with id", endpoint: "bids-received", auctionIdRequired: true },
+  ADSERVER_REQUEST_SENT: { searchString: "Sending adserver request for", endpoint: "adserver-request-sent", auctionIdRequired: false },
+})
+
+const YL_LARGE_LOGS_REGEX = new RegExp(
+  Object.values(YL_LARGE_LOGS).map(obj => obj.searchString + ".*").join("|")
+)
+
 // Store settings with defaults
 let settings = {
   logLimit: 5000000000,
@@ -48,8 +62,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle connection status updates from page refreshes
   if (message.type === "CONNECTION_STATUS_UPDATE") {
     console.log(
-      `DevTools received connection status update: ${
-        message.isConnected ? "Connected" : "Disconnected"
+      `DevTools received connection status update: ${message.isConnected ? "Connected" : "Disconnected"
       }`
     );
 
@@ -137,10 +150,10 @@ function truncateStringsInData(data, maxLength, depth = 0, path = "") {
   }
 
   if (typeof data === "object" && data !== null) {
-    console.log(
-      `Processing object at path ${path} with keys:`,
-      Object.keys(data)
-    );
+    // console.log(
+    //   `Processing object at path ${path} with keys:`,
+    //   Object.keys(data)
+    // );
     const result = {};
     for (const [key, value] of Object.entries(data)) {
       try {
@@ -197,7 +210,7 @@ function processArrayWithSizeLimit(array, maxTotalSize, processFunc) {
 
 // Modified processJsonString to handle arrays with size limit
 function processJsonString(jsonString, maxLength) {
-  console.log("Processing string of length:", jsonString?.length);
+  // console.log("Processing string of length:", jsonString?.length);
   try {
     let parsed;
     try {
@@ -213,7 +226,7 @@ function processJsonString(jsonString, maxLength) {
 
     // If it's an array, process with size limit
     if (Array.isArray(parsed)) {
-      console.log("Processing array of objects with size limit");
+      // console.log("Processing array of objects with size limit");
       const processed = processArrayWithSizeLimit(
         parsed,
         settings.maxLogSize,
@@ -252,13 +265,17 @@ async function sendToBrowserConnector(logData) {
     return;
   }
 
+
+  let serverUrl = `http://${settings.serverHost}:${settings.serverPort}/`;
   console.log("Sending log data to browser connector:", {
     type: logData.type,
     timestamp: logData.timestamp,
   });
 
+
   // Process any string fields that might contain JSON
   const processedData = { ...logData };
+
 
   if (logData.type === "network-request") {
     console.log("Processing network request");
@@ -287,7 +304,15 @@ async function sendToBrowserConnector(logData) {
         processedData.responseBody.length
       );
     }
-  } else if (
+  }
+  else if (logData.type === "large-log") {
+    console.log("Processing large log");
+    const { auctionId, message, endpoint } = logData;
+    serverUrl += endpoint;
+
+    return sendToServer({ auctionId, data: message }, serverUrl);
+  }
+  else if (
     logData.type === "console-log" ||
     logData.type === "console-error"
   ) {
@@ -327,7 +352,11 @@ async function sendToBrowserConnector(logData) {
     );
   }
 
-  const serverUrl = `http://${settings.serverHost}:${settings.serverPort}/extension-log`;
+  serverUrl += "extension-log";
+  sendToServer(payload, serverUrl);
+}
+
+const sendToServer = (payload, serverUrl) => {
   console.log(`Sending log to ${serverUrl}`);
 
   fetch(serverUrl, {
@@ -342,7 +371,7 @@ async function sendToBrowserConnector(logData) {
       return response.json();
     })
     .then((data) => {
-      console.log("Log sent successfully:", data);
+      // console.log("Log sent successfully:", data);
     })
     .catch((error) => {
       console.error("Error sending log:", error);
@@ -581,7 +610,7 @@ function detachDebugger() {
 }
 
 // Move the console message listener outside the panel creation
-const consoleMessageListener = (source, method, params) => {
+const consoleMessageListener = async (source, method, params) => {
   // Only process events for our tab
   if (source.tabId !== currentTabId) {
     return;
@@ -609,61 +638,22 @@ const consoleMessageListener = (source, method, params) => {
     if (args.length > 0) {
       // Try to build a meaningful representation of all arguments
       try {
-        formattedMessage = args
-          .map((arg) => {
+        formattedMessage = await args
+          .map(async (arg) => {
             // Handle different types of arguments
             if (arg.type === "string") {
               return arg.value;
             } else if (arg.type === "object" && arg.preview) {
               // For objects, include their preview or description
               const objSize = JSON.stringify(arg.preview).length;
+              // console.log("Large object detected, size:", objSize, "preview:", arg.preview.properties, arg);
 
-              console.log("Large object detected, size:", objSize, "preview:", arg.preview.properties, arg);
-              isBidRequest(arg.preview);
-              // check if preview is what we are looking for
-              function isBidRequest(objectPreview) {
-                if (objectPreview.properties) {
-                  const isArray = Array.isArray(objectPreview.properties);
-                  if (isArray) {
-                    // console.log("objectPreview.properties[0].value[0]", objectPreview.properties[0].value[0])
-                    // console.log("objectPreview.properties", JSON.stringify(objectPreview.properties))
-                    for (const property of objectPreview.properties) {
-                      console.log("LOOP property", JSON.stringify(property.value))
-                    }
-                    
-                    const keys = Object.keys(JSON.parse(JSON.stringify(objectPreview.properties?.[0]?.value[0] ?? {})))
-                    const isBidRequest = keys.includes("auctionId") && keys.includes("bids");
-
-                    return isBidRequest ? console.log("Bid request" + JSON.stringify(objectPreview.properties?.value[0])) :false
-                  }
-                }
+              if (isLargeLogRelevant(args)) {
+                const entry = await retrieveLargeLog({ objectId: arg.objectId, args, source })
+                console.log("large entry", entry);
+                return entry && sendToBrowserConnector(entry)
               }
 
-              if (arg.type === "object" && arg.objectId) {
-                chrome.debugger.sendCommand(
-                  { tabId: currentTabId },
-                  "Runtime.getProperties",
-                  { objectId: arg.objectId, ownProperties: true },
-                  (result) => {
-                    if (chrome.runtime.lastError) {
-                      console.error("Failed to get object properties:", chrome.runtime.lastError);
-                    } else {
-                      // Reconstruct a plain object from the properties
-                      const fullObj = {};
-                      result.result.forEach((prop) => {
-                        if (prop.enumerable && prop.value) {
-                          fullObj[prop.name] = prop.value.value;
-                        }
-                      });
-                      console.log("Full object reconstructed:", fullObj);
-                      // You can now use or stringify fullObj as needed
-                      console.log("Full object as JSON:", JSON.stringify(fullObj, null, 2));
-                    }
-                  }
-                );
-              }
-
-              return JSON.stringify(arg.preview);
             } else if (arg.description) {
               // Some objects have descriptions
               return arg.description;
@@ -693,10 +683,69 @@ const consoleMessageListener = (source, method, params) => {
       message: formattedMessage,
       timestamp: Date.now(),
     };
-    console.log("Sending console entry:", entry);
+
+    // console.log("Sending console entry:", entry);
     sendToBrowserConnector(entry);
   }
 };
+
+const isLargeLogRelevant = (logArgs) => logArgs.find(({ value }) => YL_LARGE_LOGS_REGEX.test(value))
+
+const retrieveLargeLog = async ({ objectId, args, source }) => {
+  return new Promise((resolve, reject) => {
+
+    if (!objectId) reject("No objectId found for large YL log. Cannot retrieve original object:", args);
+
+    chrome.debugger.sendCommand(
+      { tabId: source.tabId },
+      "Runtime.callFunctionOn",
+      {
+        objectId,
+        functionDeclaration: "function() { return JSON.stringify(this, null, 2); }"
+      },
+      (res) => {
+        if (chrome.runtime.lastError) {
+          console.error("Error:", chrome.runtime.lastError);
+          reject(chrome.runtime.lastError);
+          return;
+        }
+
+        let entry;
+
+        const message = res.result?.value;
+        if (message) {
+          for (const { searchString, endpoint, auctionIdRequired } of Object.values(YL_LARGE_LOGS)) {
+            const regex = new RegExp(searchString);
+            const ylLargeLog = args.find(({ value }) => regex.test(value));
+            if (ylLargeLog) {
+              const findAuctionId = ylLargeLog.value.match(auctionIdRegex);
+              const auctionId = findAuctionId[0];
+
+              if (auctionIdRequired && !auctionId) {
+                console.error("No auction ID found for large YL log:", ylLargeLog.value);
+              }
+
+              entry = {
+                type: 'large-log',
+                endpoint,
+                message,
+                auctionId,
+              };
+              break;
+            }
+          }
+        }
+
+        resolve(entry);
+      }
+    );
+  });
+}
+
+
+
+
+
 
 // 2) Use DevTools Protocol to capture console logs
 chrome.devtools.panels.create("BrowserToolsMCP", "", "panel.html", (panel) => {
@@ -1173,9 +1222,5 @@ window.addEventListener("unload", () => {
   if (wsReconnectTimeout) {
     clearTimeout(wsReconnectTimeout);
   }
-});
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log("Background script received message:", message, sender, sendResponse);
 });
 

@@ -30,7 +30,7 @@ import {
 
 // Store bid requests in memory
 //todo add bid request
-let bidRequestsStorage: { [auctionId: string]: any[] } = {}
+let bidRequests: { [auctionId: string]: { bidRequest: any } } = {}
 
 /**
  * Converts a file path to the appropriate format for the current platform
@@ -490,23 +490,42 @@ app.post("/extension-log", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.post("/bid-requests/:auctionId", (req, res) => {
-  const auctionId = req.params.auctionId;
-  if (!bidRequestsStorage[auctionId]) {
-    bidRequestsStorage[auctionId] = [];
+app.post("/bid-requests", (req, res) => {
+  const auctionId = req.body?.auctionId;
+  if (!auctionId) {
+    res.status(400).json({
+      status: "error",
+      message: "No auction ID provided"
+    });
+    return
   }
 
-  const bidRequest = JSON.parse(JSON.stringify(req.body));
+  const data = req.body?.data;
+  if (!req.body.data) {
+    res.status(400).json({
+      status: "error",
+      message: "No bid request data provided"
+    });
+    return
+  }
 
-  bidRequestsStorage[auctionId].push(bidRequest);
+  try {
+    const bidRequest = JSON.parse(data);
+    bidRequests[auctionId] = bidRequest;
 
-  console.log(`Bid request added for auction ${auctionId}:`, req.body);
-
-  res.json({
-    status: "201",
-    auctionId,
-    body: req.body.bidRequest
-  });
+    console.log(`Bid request added for auction ${auctionId}:`, req.body);
+    res.json({
+      status: "201",
+      auctionId,
+      body: req.body.bidRequest
+    });
+  } catch (e) {
+    console.error("Error parsing bid request:", e);
+    res.status(400).json({
+      status: "error",
+      message: "Error parsing bid request"
+    });
+  }
 });
 
 // Update GET endpoints to use the new function
@@ -593,7 +612,7 @@ function clearAllLogs() {
   networkErrors.length = 0;
   networkSuccess.length = 0;
   allXhr.length = 0;
-  bidRequestsStorage = {};
+  bidRequests = {};
   selectedElement = null;
   console.log("All logs have been wiped");
 }
@@ -651,8 +670,8 @@ app.post("/current-url", (req, res) => {
 
 // Bid related endpoints
 // Post memory heavy bid requests
-app.get("/bid-requests/", (_, res) => {
-  const auctionIds = Object.keys(bidRequestsStorage)
+app.get("/bid-requests", (_, res) => {
+  const auctionIds = Object.keys(bidRequests)
   if (auctionIds.length === 0) {
     res.status(404).json({
       status: "error",
@@ -661,7 +680,7 @@ app.get("/bid-requests/", (_, res) => {
     return
   }
 
-  const response = auctionIds.map((auctionId) => ({ [auctionId]: bidRequestsStorage[auctionId].length }))
+  const response = auctionIds.map((auctionId) => ({ [auctionId]: JSON.stringify(bidRequests[auctionId]).substring(0, 500) + "..." }))
 
   res.json(response);
 });
@@ -669,7 +688,7 @@ app.get("/bid-requests/", (_, res) => {
 app.get("/bid-requests/:auctionId", (req, res) => {
   const auctionId = req.params.auctionId;
 
-  if (!bidRequestsStorage[auctionId]) {
+  if (!bidRequests[auctionId]) {
     res.status(404).json({
       status: "error",
       message: "No bid requests found for this auction ID"
@@ -677,7 +696,7 @@ app.get("/bid-requests/:auctionId", (req, res) => {
     return
   }
 
-  res.json(bidRequestsStorage[auctionId]);
+  res.json(bidRequests[auctionId]);
 });
 
 // Add endpoint to get the current URL
