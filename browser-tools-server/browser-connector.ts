@@ -29,6 +29,7 @@ import {
 } from "./log-processors.js";
 
 let bidRequests: { [auctionId: string]: { bidRequest: any } } = {}
+let bidsReceived: { [auctionId: string]: { bidReceived: any } } = {}
 
 /**
  * Converts a file path to the appropriate format for the current platform
@@ -644,20 +645,6 @@ app.get("/bid-requests", (_, res) => {
   res.json(response);
 });
 
-app.get("/bid-requests/:auctionId", (req, res) => {
-  const auctionId = req.params.auctionId;
-
-  if (!bidRequests[auctionId]) {
-    res.status(404).json({
-      status: "error",
-      message: "No bid requests found for this auction ID"
-    });
-    return
-  }
-
-  res.json(bidRequests[auctionId]);
-});
-
 app.post("/bid-requests", (req, res) => {
   const auctionId = req.body?.auctionId;
   if (!auctionId) {
@@ -685,13 +672,95 @@ app.post("/bid-requests", (req, res) => {
     res.json({
       status: "201",
       auctionId,
-      body: req.body.bidRequest
+      body: req.body.data
     });
   } catch (e) {
     console.error("Error parsing bid request:", e);
     res.status(400).json({
       status: "error",
       message: "Error parsing bid request"
+    });
+  }
+});
+
+app.get("/bid-requests/:auctionId", (req, res) => {
+  const auctionId = req.params.auctionId;
+
+  if (!bidRequests[auctionId]) {
+    res.status(404).json({
+      status: "error",
+      message: "No bid requests found for this auction ID"
+    });
+    return
+  }
+
+  res.json(bidRequests[auctionId]);
+});
+
+app.get("/bids-received", (_, res) => {
+  console.log("Getting bids received", bidsReceived);
+  const auctionIds = Object.keys(bidsReceived)
+  if (auctionIds.length === 0) {
+    res.status(404).json({
+      status: "error",
+      message: "No bids received found for any auction"
+    });
+    return
+  }
+
+  const response = auctionIds.map((auctionId) => ({ [auctionId]: JSON.stringify(bidsReceived[auctionId]).substring(0, 500) + "..." }))
+
+  res.json(response);
+});
+
+app.get("/bids-received/:auctionId", (req, res) => {
+  const auctionId = req.params.auctionId;
+
+  if (!bidsReceived[auctionId]) {
+    res.status(404).json({
+      status: "error",
+      message: "No bids received found for this auction ID"
+    });
+    return
+  }
+
+  res.json(bidsReceived[auctionId]);
+});
+
+app.post("/bids-received", (req, res) => {
+  const auctionId = req.body?.auctionId;
+  if (!auctionId) {
+    res.status(400).json({
+      status: "error",
+      message: "No auction ID provided"
+    });
+    return
+  }
+
+  const data = req.body?.data;
+  if (!req.body.data) {
+    res.status(400).json({
+      status: "error",
+      message: "No bids received data provided"
+    });
+    return
+  }
+
+  try {
+    console.log(`Posting bids received for auction ${auctionId}:`, req.body.data);
+    const parsedBidsReceived = JSON.parse(data);
+    bidsReceived[auctionId] = parsedBidsReceived;
+
+    res.json({
+      status: "201",
+      auctionId,
+      allBidsReceived: bidsReceived
+    });
+  } catch (e) {
+    console.error("Error parsing bids received:", e);
+    res.status(400).json({
+      status: "error",
+      message: "Error parsing bids received"
     });
   }
 });

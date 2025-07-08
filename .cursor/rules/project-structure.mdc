@@ -21,6 +21,7 @@ Continue if the user has explicitly asked for a `wrapper health check` or `whc`.
             2. `bids` - Array of bids to send, length must not be 0.
             3. `bids[index].schain` - The Supply Chain Object tracks the path of an impression and prevents unauthorized reselling. It provides legitimacy for the buyer that the impression was handled by legitimate parties. This field must exist.
             4. `bids[index].userId` - Used to identify users across different websites. Unless it's a user first visit, this field will always be populated.
+
         -   [AI Instruction]: First invoke the browser mcp tool `getBidRequests` WITHOUT any argument. An array with the following schema should be returned: 
             `{ [auctionId: string]: any[] }`. If an error is returned, exit and inform the user. If the list is empty, exit and inform the user.
             
@@ -28,5 +29,17 @@ Continue if the user has explicitly asked for a `wrapper health check` or `whc`.
 
             Index a random bid object and verify that the `auctionId` of the bid is the same as the one stored in memory. For the same bid object analyze the bid according to the above definition: `Essential bid properties` and print a schema representation of the property evaluated (use the actual vales in the schema), for each operation, so that the user can manually verify your reasoning.
 
-            Assert if core functionality is ok based on given premises and inform the user.
+  -  Bid received - Received bids from SSPs
+        -   Expected bid properties:
+            1. `cpm` - Bid price per milli
+            2. `bidderCode` - Name of the bidder
+            3. `adId` - Id of the ad
+            4. `mediaType` - Type of bid, expected values are "banner", "native", "outstream"
+            5. `yieldlove` - Yieldlove meta data containing properties such as targeting, cpm and auction details
+
+        -   [AI Instruction]: IMPORTANT: Only continue if you've printed the result of the "Bid Requests" analyzis and that it also was successful.
+            Invoke the browser mcp tool `getBidsReceived` with the same auction id used from the "Bid requests" step.
+            The response should be an array containing the received bids. If you received no response, inform the user that no bids were sent for the auction. If you received a response index a random bid and assert that it's a bid response by checking if the expected bid properties are present (all properties are on a top level). 
+
+ Assert if core functionality is ok based on the above given premises and inform the user.
 <!-- END -->

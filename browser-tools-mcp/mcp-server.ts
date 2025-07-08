@@ -1472,6 +1472,29 @@ server.tool(
   }
 );
 
+server.tool(
+  "getBidsReceived",
+  "Retrieves bids received for an auction",
+  {
+    auctionId: z.string(),
+  },
+  async ({ auctionId }) => {
+    return await withServerConnection(async () => {
+      const url = `http://${discoveredHost}:${discoveredPort}/bids-received/${auctionId}`;
+      const response = await fetch(url);
+      const json = await response.json();
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(json, null, 2),
+          },
+        ],
+      };
+    });
+  }
+);
+
 // Start receiving messages on stdio
 (async () => {
   try {
