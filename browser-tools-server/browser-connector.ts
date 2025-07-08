@@ -28,8 +28,6 @@ import {
   shortenMessageField
 } from "./log-processors.js";
 
-// Store bid requests in memory
-//todo add bid request
 let bidRequests: { [auctionId: string]: { bidRequest: any } } = {}
 
 /**
@@ -490,44 +488,6 @@ app.post("/extension-log", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.post("/bid-requests", (req, res) => {
-  const auctionId = req.body?.auctionId;
-  if (!auctionId) {
-    res.status(400).json({
-      status: "error",
-      message: "No auction ID provided"
-    });
-    return
-  }
-
-  const data = req.body?.data;
-  if (!req.body.data) {
-    res.status(400).json({
-      status: "error",
-      message: "No bid request data provided"
-    });
-    return
-  }
-
-  try {
-    const bidRequest = JSON.parse(data);
-    bidRequests[auctionId] = bidRequest;
-
-    console.log(`Bid request added for auction ${auctionId}:`, req.body);
-    res.json({
-      status: "201",
-      auctionId,
-      body: req.body.bidRequest
-    });
-  } catch (e) {
-    console.error("Error parsing bid request:", e);
-    res.status(400).json({
-      status: "error",
-      message: "Error parsing bid request"
-    });
-  }
-});
-
 // Update GET endpoints to use the new function
 app.get("/console-logs", (req, res) => {
   let logs = truncateForPrebidLogs(consoleLogs);
@@ -669,7 +629,6 @@ app.post("/current-url", (req, res) => {
 });
 
 // Bid related endpoints
-// Post memory heavy bid requests
 app.get("/bid-requests", (_, res) => {
   const auctionIds = Object.keys(bidRequests)
   if (auctionIds.length === 0) {
@@ -697,6 +656,44 @@ app.get("/bid-requests/:auctionId", (req, res) => {
   }
 
   res.json(bidRequests[auctionId]);
+});
+
+app.post("/bid-requests", (req, res) => {
+  const auctionId = req.body?.auctionId;
+  if (!auctionId) {
+    res.status(400).json({
+      status: "error",
+      message: "No auction ID provided"
+    });
+    return
+  }
+
+  const data = req.body?.data;
+  if (!req.body.data) {
+    res.status(400).json({
+      status: "error",
+      message: "No bid request data provided"
+    });
+    return
+  }
+
+  try {
+    const bidRequest = JSON.parse(data);
+    bidRequests[auctionId] = bidRequest;
+
+    console.log(`Bid request added for auction ${auctionId}:`, req.body);
+    res.json({
+      status: "201",
+      auctionId,
+      body: req.body.bidRequest
+    });
+  } catch (e) {
+    console.error("Error parsing bid request:", e);
+    res.status(400).json({
+      status: "error",
+      message: "Error parsing bid request"
+    });
+  }
 });
 
 // Add endpoint to get the current URL

@@ -1,7 +1,7 @@
 // devtools.js
 
 // Auction id regex
-const auctionIdRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const AUCTION_ID_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 // YL large logs search patterns
 const YL_LARGE_LOGS = Object.freeze({
@@ -16,10 +16,10 @@ const YL_LARGE_LOGS_REGEX = new RegExp(
 
 // Store settings with defaults
 let settings = {
-  logLimit: 5000000000,
-  queryLimit: 3000000000,
-  stringSizeLimit: 500000000,
-  maxLogSize: 200000000000,
+  logLimit: 50,
+  queryLimit: 30000,
+  stringSizeLimit: 500,
+  maxLogSize: 20000,
   showRequestHeaders: false,
   showResponseHeaders: false,
   screenshotPath: "", // Add new setting for screenshot path
@@ -150,10 +150,10 @@ function truncateStringsInData(data, maxLength, depth = 0, path = "") {
   }
 
   if (typeof data === "object" && data !== null) {
-    // console.log(
-    //   `Processing object at path ${path} with keys:`,
-    //   Object.keys(data)
-    // );
+    console.log(
+      `Processing object at path ${path} with keys:`,
+      Object.keys(data)
+    );
     const result = {};
     for (const [key, value] of Object.entries(data)) {
       try {
@@ -210,7 +210,7 @@ function processArrayWithSizeLimit(array, maxTotalSize, processFunc) {
 
 // Modified processJsonString to handle arrays with size limit
 function processJsonString(jsonString, maxLength) {
-  // console.log("Processing string of length:", jsonString?.length);
+  console.log("Processing string of length:", jsonString?.length);
   try {
     let parsed;
     try {
@@ -226,7 +226,7 @@ function processJsonString(jsonString, maxLength) {
 
     // If it's an array, process with size limit
     if (Array.isArray(parsed)) {
-      // console.log("Processing array of objects with size limit");
+      console.log("Processing array of objects with size limit");
       const processed = processArrayWithSizeLimit(
         parsed,
         settings.maxLogSize,
@@ -272,10 +272,8 @@ async function sendToBrowserConnector(logData) {
     timestamp: logData.timestamp,
   });
 
-
   // Process any string fields that might contain JSON
   const processedData = { ...logData };
-
 
   if (logData.type === "network-request") {
     console.log("Processing network request");
@@ -306,10 +304,10 @@ async function sendToBrowserConnector(logData) {
     }
   }
   else if (logData.type === "large-log") {
-    console.log("Processing large log");
     const { auctionId, message, endpoint } = logData;
     serverUrl += endpoint;
 
+    console.log("Sending large YL log", logData);
     return sendToServer({ auctionId, data: message }, serverUrl);
   }
   else if (
@@ -371,7 +369,7 @@ const sendToServer = (payload, serverUrl) => {
       return response.json();
     })
     .then((data) => {
-      // console.log("Log sent successfully:", data);
+      console.log("Log sent successfully:", data);
     })
     .catch((error) => {
       console.error("Error sending log:", error);
@@ -522,7 +520,6 @@ chrome.devtools.network.onRequestFinished.addListener((request) => {
   }
 });
 
-
 // Helper function to attach debugger
 async function attachDebugger() {
   // First check if we're already attached to this tab
@@ -646,14 +643,14 @@ const consoleMessageListener = async (source, method, params) => {
             } else if (arg.type === "object" && arg.preview) {
               // For objects, include their preview or description
               const objSize = JSON.stringify(arg.preview).length;
-              // console.log("Large object detected, size:", objSize, "preview:", arg.preview.properties, arg);
+              console.log("Large object detected, size:", objSize, "preview:", arg.preview.properties, arg);
 
               if (isLargeLogRelevant(args)) {
                 const entry = await retrieveLargeLog({ objectId: arg.objectId, args, source })
-                console.log("large entry", entry);
                 return entry && sendToBrowserConnector(entry)
               }
 
+              return JSON.stringify(arg.preview);
             } else if (arg.description) {
               // Some objects have descriptions
               return arg.description;
@@ -684,7 +681,7 @@ const consoleMessageListener = async (source, method, params) => {
       timestamp: Date.now(),
     };
 
-    // console.log("Sending console entry:", entry);
+    console.log("Sending console entry:", entry);
     sendToBrowserConnector(entry);
   }
 };
@@ -693,7 +690,6 @@ const isLargeLogRelevant = (logArgs) => logArgs.find(({ value }) => YL_LARGE_LOG
 
 const retrieveLargeLog = async ({ objectId, args, source }) => {
   return new Promise((resolve, reject) => {
-
     if (!objectId) reject("No objectId found for large YL log. Cannot retrieve original object:", args);
 
     chrome.debugger.sendCommand(
@@ -718,7 +714,7 @@ const retrieveLargeLog = async ({ objectId, args, source }) => {
             const regex = new RegExp(searchString);
             const ylLargeLog = args.find(({ value }) => regex.test(value));
             if (ylLargeLog) {
-              const findAuctionId = ylLargeLog.value.match(auctionIdRegex);
+              const findAuctionId = ylLargeLog.value.match(AUCTION_ID_REGEX);
               const auctionId = findAuctionId[0];
 
               if (auctionIdRequired && !auctionId) {
@@ -741,11 +737,6 @@ const retrieveLargeLog = async ({ objectId, args, source }) => {
     );
   });
 }
-
-
-
-
-
 
 // 2) Use DevTools Protocol to capture console logs
 chrome.devtools.panels.create("BrowserToolsMCP", "", "panel.html", (panel) => {
