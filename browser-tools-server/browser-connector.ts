@@ -21,6 +21,9 @@ import {
 import * as net from "net";
 import { runBestPracticesAudit } from "./lighthouse/best-practices.js";
 
+let bidRequests: { [auctionId: string]: { bidRequest: any } } = {}
+let bidsReceived: { [auctionId: string]: { bidReceived: any } } = {}
+
 /**
  * Converts a file path to the appropriate format for the current platform
  * Handles Windows, WSL, macOS and Linux path formats
@@ -530,6 +533,7 @@ function clearAllLogs() {
   networkErrors.length = 0;
   networkSuccess.length = 0;
   allXhr.length = 0;
+  bidRequests = {};
   selectedElement = null;
   console.log("All logs have been wiped");
 }
@@ -582,6 +586,142 @@ app.post("/current-url", (req, res) => {
   } else {
     console.log("No URL provided in current-url request");
     res.status(400).json({ status: "error", message: "No URL provided" });
+  }
+});
+
+// Bid related endpoints
+app.get("/bid-requests", (_, res) => {
+  const auctionIds = Object.keys(bidRequests)
+  if (auctionIds.length === 0) {
+    res.status(404).json({
+      status: "error",
+      message: "No bid requests found for any auction"
+    });
+    return
+  }
+
+  const response = auctionIds.map((auctionId) => ({ [auctionId]: JSON.stringify(bidRequests[auctionId]).substring(0, 500) + "..." }))
+
+  res.json(response);
+});
+
+app.post("/bid-requests", (req, res) => {
+  const auctionId = req.body?.auctionId;
+  if (!auctionId) {
+    res.status(400).json({
+      status: "error",
+      message: "No auction ID provided"
+    });
+    return
+  }
+
+  const data = req.body?.data;
+  if (!req.body.data) {
+    res.status(400).json({
+      status: "error",
+      message: "No bid request data provided"
+    });
+    return
+  }
+
+  try {
+    const bidRequest = JSON.parse(data);
+    bidRequests[auctionId] = bidRequest;
+
+    console.log(`Bid request added for auction ${auctionId}:`, req.body);
+    res.json({
+      status: "201",
+      auctionId,
+      body: req.body.data
+    });
+  } catch (e) {
+    console.error("Error parsing bid request:", e);
+    res.status(400).json({
+      status: "error",
+      message: "Error parsing bid request"
+    });
+  }
+});
+
+app.get("/bid-requests/:auctionId", (req, res) => {
+  const auctionId = req.params.auctionId;
+
+  if (!bidRequests[auctionId]) {
+    res.status(404).json({
+      status: "error",
+      message: "No bid requests found for this auction ID"
+    });
+    return
+  }
+
+  res.json(bidRequests[auctionId]);
+});
+
+app.get("/bids-received", (_, res) => {
+  console.log("Getting bids received", bidsReceived);
+  const auctionIds = Object.keys(bidsReceived)
+  if (auctionIds.length === 0) {
+    res.status(404).json({
+      status: "error",
+      message: "No bids received found for any auction"
+    });
+    return
+  }
+
+  const response = auctionIds.map((auctionId) => ({ [auctionId]: JSON.stringify(bidsReceived[auctionId]).substring(0, 500) + "..." }))
+
+  res.json(response);
+});
+
+app.get("/bids-received/:auctionId", (req, res) => {
+  const auctionId = req.params.auctionId;
+
+  if (!bidsReceived[auctionId]) {
+    res.status(404).json({
+      status: "error",
+      message: "No bids received found for this auction ID"
+    });
+    return
+  }
+
+  res.json(bidsReceived[auctionId]);
+});
+
+app.post("/bids-received", (req, res) => {
+  const auctionId = req.body?.auctionId;
+  if (!auctionId) {
+    res.status(400).json({
+      status: "error",
+      message: "No auction ID provided"
+    });
+    return
+  }
+
+  const data = req.body?.data;
+  if (!req.body.data) {
+    res.status(400).json({
+      status: "error",
+      message: "No bids received data provided"
+    });
+    return
+  }
+
+  try {
+    console.log(`Posting bids received for auction ${auctionId}:`, req.body.data);
+    const parsedBidsReceived = JSON.parse(data);
+    bidsReceived[auctionId] = parsedBidsReceived;
+
+    res.json({
+      status: "201",
+      auctionId,
+      allBidsReceived: bidsReceived
+    });
+  } catch (e) {
+    console.error("Error parsing bids received:", e);
+    res.status(400).json({
+      status: "error",
+      message: "Error parsing bids received"
+    });
   }
 });
 
@@ -1035,8 +1175,7 @@ export class BrowserConnector {
           err
         );
         throw new Error(
-          `Failed to create screenshot directory: ${
-            err instanceof Error ? err.message : String(err)
+          `Failed to create screenshot directory: ${err instanceof Error ? err.message : String(err)
           }`
         );
       }
@@ -1059,8 +1198,7 @@ export class BrowserConnector {
           err
         );
         throw new Error(
-          `Failed to save screenshot: ${
-            err instanceof Error ? err.message : String(err)
+          `Failed to save screenshot: ${err instanceof Error ? err.message : String(err)
           }`
         );
       }

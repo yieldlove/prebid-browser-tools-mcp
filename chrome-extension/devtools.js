@@ -1,5 +1,19 @@
 // devtools.js
 
+// Auction id regex
+const AUCTION_ID_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+// YL large logs search patterns
+const YL_LARGE_LOGS = Object.freeze({
+  BID_REQUESTS: { searchString: "Bids Requested for Auction with id", endpoint: "bid-requests", auctionIdRequired: true },
+  BIDS_RECEIVED: { searchString: "Bids Received for Auction with id", endpoint: "bids-received", auctionIdRequired: true },
+  ADSERVER_REQUEST_SENT: { searchString: "Sending adserver request for", endpoint: "adserver-request-sent", auctionIdRequired: false },
+})
+
+const YL_LARGE_LOGS_REGEX = new RegExp(
+  Object.values(YL_LARGE_LOGS).map(obj => obj.searchString + ".*").join("|")
+)
+
 // Store settings with defaults
 let settings = {
   logLimit: 50,
@@ -20,6 +34,7 @@ let attachDebuggerRetries = 0;
 const currentTabId = chrome.devtools.inspectedWindow.tabId;
 const MAX_ATTACH_RETRIES = 3;
 const ATTACH_RETRY_DELAY = 1000; // 1 second
+
 
 // Load saved settings on startup
 chrome.storage.local.get(["browserConnectorSettings"], (result) => {
@@ -47,8 +62,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle connection status updates from page refreshes
   if (message.type === "CONNECTION_STATUS_UPDATE") {
     console.log(
-      `DevTools received connection status update: ${
-        message.isConnected ? "Connected" : "Disconnected"
+      `DevTools received connection status update: ${message.isConnected ? "Connected" : "Disconnected"
       }`
     );
 
@@ -118,7 +132,6 @@ function truncateStringsInData(data, maxLength, depth = 0, path = "") {
     return "[MAX_DEPTH_EXCEEDED]";
   }
 
-  console.log(`Processing at path: ${path}, type:`, typeof data);
 
   if (typeof data === "string") {
     if (data.length > maxLength) {
@@ -131,7 +144,6 @@ function truncateStringsInData(data, maxLength, depth = 0, path = "") {
   }
 
   if (Array.isArray(data)) {
-    console.log(`Processing array at path ${path} with length:`, data.length);
     return data.map((item, index) =>
       truncateStringsInData(item, maxLength, depth + 1, `${path}[${index}]`)
     );
@@ -253,6 +265,8 @@ async function sendToBrowserConnector(logData) {
     return;
   }
 
+
+  let serverUrl = `http://${settings.serverHost}:${settings.serverPort}/`;
   console.log("Sending log data to browser connector:", {
     type: logData.type,
     timestamp: logData.timestamp,
@@ -288,7 +302,15 @@ async function sendToBrowserConnector(logData) {
         processedData.responseBody.length
       );
     }
-  } else if (
+  }
+  else if (logData.type === "large-log") {
+    const { auctionId, message, endpoint } = logData;
+    serverUrl += endpoint;
+
+    console.log("Sending large YL log", logData);
+    return sendToServer({ auctionId, data: message }, serverUrl);
+  }
+  else if (
     logData.type === "console-log" ||
     logData.type === "console-error"
   ) {
@@ -328,7 +350,11 @@ async function sendToBrowserConnector(logData) {
     );
   }
 
-  const serverUrl = `http://${settings.serverHost}:${settings.serverPort}/extension-log`;
+  serverUrl += "extension-log";
+  sendToServer(payload, serverUrl);
+}
+
+const sendToServer = (payload, serverUrl) => {
   console.log(`Sending log to ${serverUrl}`);
 
   fetch(serverUrl, {
@@ -581,7 +607,7 @@ function detachDebugger() {
 }
 
 // Move the console message listener outside the panel creation
-const consoleMessageListener = (source, method, params) => {
+const consoleMessageListener = async (source, method, params) => {
   // Only process events for our tab
   if (source.tabId !== currentTabId) {
     return;
@@ -609,13 +635,21 @@ const consoleMessageListener = (source, method, params) => {
     if (args.length > 0) {
       // Try to build a meaningful representation of all arguments
       try {
-        formattedMessage = args
-          .map((arg) => {
+        formattedMessage = await args
+          .map(async (arg) => {
             // Handle different types of arguments
             if (arg.type === "string") {
               return arg.value;
             } else if (arg.type === "object" && arg.preview) {
               // For objects, include their preview or description
+              const objSize = JSON.stringify(arg.preview).length;
+              console.log("Large object detected, size:", objSize, "preview:", arg.preview.properties, arg);
+
+              if (isLargeLogRelevant(args)) {
+                const entry = await retrieveLargeLog({ objectId: arg.objectId, args, source })
+                return entry && sendToBrowserConnector(entry)
+              }
+
               return JSON.stringify(arg.preview);
             } else if (arg.description) {
               // Some objects have descriptions
@@ -640,10 +674,63 @@ const consoleMessageListener = (source, method, params) => {
       message: formattedMessage,
       timestamp: Date.now(),
     };
+
     console.log("Sending console entry:", entry);
     sendToBrowserConnector(entry);
   }
 };
+
+const isLargeLogRelevant = (logArgs) => logArgs.find(({ value }) => YL_LARGE_LOGS_REGEX.test(value))
+
+const retrieveLargeLog = async ({ objectId, args, source }) => {
+  return new Promise((resolve, reject) => {
+    if (!objectId) reject("No objectId found for large YL log. Cannot retrieve original object:", args);
+
+    chrome.debugger.sendCommand(
+      { tabId: source.tabId },
+      "Runtime.callFunctionOn",
+      {
+        objectId,
+        functionDeclaration: "function() { return JSON.stringify(this, null, 2); }"
+      },
+      (res) => {
+        if (chrome.runtime.lastError) {
+          console.error("Error:", chrome.runtime.lastError);
+          reject(chrome.runtime.lastError);
+          return;
+        }
+
+        let entry;
+
+        const message = res.result?.value;
+        if (message) {
+          for (const { searchString, endpoint, auctionIdRequired } of Object.values(YL_LARGE_LOGS)) {
+            const regex = new RegExp(searchString);
+            const ylLargeLog = args.find(({ value }) => regex.test(value));
+            if (ylLargeLog) {
+              const findAuctionId = ylLargeLog.value.match(AUCTION_ID_REGEX);
+              const auctionId = findAuctionId[0];
+
+              if (auctionIdRequired && !auctionId) {
+                console.error("No auction ID found for large YL log:", ylLargeLog.value);
+              }
+
+              entry = {
+                type: 'large-log',
+                endpoint,
+                message,
+                auctionId,
+              };
+              break;
+            }
+          }
+        }
+
+        resolve(entry);
+      }
+    );
+  });
+}
 
 // 2) Use DevTools Protocol to capture console logs
 chrome.devtools.panels.create("BrowserToolsMCP", "", "panel.html", (panel) => {
@@ -1121,3 +1208,4 @@ window.addEventListener("unload", () => {
     clearTimeout(wsReconnectTimeout);
   }
 });
+
