@@ -1,0 +1,55 @@
+[
+    {
+        "$bid-request": {
+            "auctionId": "fa483071-6f08-4fdc-b038-048e74db038f",
+            "gdprConsent": "12345IAPkOVIAAOACKENAtEsAP_AAH_AAAYgIJNd_X__bX9n-_7_-ft0eY1f9_r3uQzDhfNk-4F3L_W_LwX42E7NF36pq4KuR4Eu3LBIQdlHOHcTUmw6okVrzPsbk2Mr7NKJ7PEinMbe2dYGH9_n9XT_ZKY79_____7__-__3_f__X___________3______8-_-__b_-_-_-_8_______9______9_vf__2__v_t9-__v__________7_P_9____f_r-3_3_3____-_____8A",
+            "gdprApplies": true,
+            "bids": [
+                {
+                    "userId": {
+                        "criteoId": "154spl9VMHFveDM4SU5yZldSMFB0bXcxQko1dXBzODlFMWJuJTJGNWphcUNER0xwbVdOZXlhVUw0V1lvSTJIT1J1dVk2WDR4YjM5Sk1nSVRtTUxndWpZSmtRbTZTRGJGSmRMSTU3RHRRYmZYcFcwVkl0MDVKdkclMkZoZGRuNklYUUw3VThUeG8zc2E1V2MybTBnUnFCYjVkSEVYaEJBJTNEJTNE",
+                        "id5id": {
+                            "uid": "ID5*5wOpO8U28nlB_C7Ax7XbjkSDY2BZhU_-qBJvUHf9FbMvAH3EaayNotL3x8eXPgx8MTOkALzbPe0Dx10fvKxmuS7WE_DNYBSV901pAYysUx8u9lkVrRUV_KUdhYyMY3mJLurFIrn0ymk4XWbRUJmeEC8LhR6CRd1rjcDOy3wBMf8vDTEGrRltZSXnPhSZpBLA",
+                            "ext": {
+                                "linkType": 2,
+                                "pba": "T6D8BFTCsaXi/g1pTNarJyQjvzfJZ53ODPHc4rnv1GXZG0hqA/JNx0mQyu3fSNG/"
+                            }
+                        },
+                        "pubcid": "04efc26e-250b-4c6f-a8ad-3d4a2ace8727"
+                    },
+                    "schain": {
+                        "ver": "1.0",
+                        "complete": 1,
+                        "nodes": [
+                            {
+                                "asi": "yieldlove.com",
+                                "sid": "622A43E63DBCE07BFD72191326D72967",
+                                "hp": 1
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        "$bids-received": {
+            "bidderCode": "stroeerCore",
+            "auctionId": "d4a69c84-92b6-4100-a419-7b17620ccb81",
+            "mediaType": "banner",
+            "cpm": 0.0226428,
+            "bidder": "stroeerCore",
+            "yieldlove": {
+                "cpm": {
+                    "ssp": 0.0226428,
+                    "net": 0.0226428,
+                    "adjusted": 0.0226428
+                },
+                "auction": {
+                    "first": 0.14505034988905957,
+                    "second": 0.122,
+                    "third": 0.09
+                },
+                "cpmTracking": 0.02265
+            }
+        }
+    }
+]
