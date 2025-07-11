@@ -28,8 +28,10 @@ import {
   shortenMessageField
 } from "./log-processors.js";
 
-let bidRequests: { [auctionId: string]: { bidRequest: any } } = {}
-let bidsReceived: { [auctionId: string]: { bidReceived: any } } = {}
+type Bid = { [auctionId: string]: { [key: string]: any } }
+
+let bidRequests: Bid = {}
+let bidsReceived: Bid = {}
 
 /**
  * Converts a file path to the appropriate format for the current platform
@@ -685,8 +687,18 @@ app.post("/bid-requests", (req, res) => {
 
 app.get("/bid-requests/:auctionId", (req, res) => {
   const auctionId = req.params.auctionId;
+  const queryParams = req.query;
 
-  if (!bidRequests[auctionId]) {
+  if (!auctionId) {
+    res.status(404).json({
+      status: "error",
+      message: "No auction ID provided"
+    });
+    return
+  }
+
+  const bidRequest = bidRequests[auctionId]
+  if (!bidRequest) {
     res.status(404).json({
       status: "error",
       message: "No bid requests found for this auction ID"
@@ -694,11 +706,35 @@ app.get("/bid-requests/:auctionId", (req, res) => {
     return
   }
 
-  res.json(bidRequests[auctionId]);
+  if (queryParams.condensed) {
+    const randomBidder = bidRequest[Math.floor(Math.random() * (bidRequest.length - 1))]
+    const bidderEntries = Object.entries(randomBidder)
+
+    const requiredFields = ['bidderCode', 'auctionId', 'ortb2', 'gdprConsent', 'bids'];
+    const condensedBidderFields: Bid = {}
+
+    bidderEntries.forEach(([field, value]: [string, any]) => {
+      if (field === 'bids') {
+        const randomIndex = Math.floor(Math.random() * value.length)
+        const randomBid = value[randomIndex]
+
+        condensedBidderFields[field] = randomBid
+      }
+      else if (requiredFields.includes(field)) {
+        condensedBidderFields[field] = value
+      }
+    })
+
+    // Remove vendor data from gdprConsent since it's a lot of verbose data
+    delete condensedBidderFields.gdprConsent.vendorData
+
+    res.json([condensedBidderFields]);
+  } else {
+    res.json(bidRequest);
+  }
 });
 
 app.get("/bids-received", (_, res) => {
-  console.log("Getting bids received", bidsReceived);
   const auctionIds = Object.keys(bidsReceived)
   if (auctionIds.length === 0) {
     res.status(404).json({
@@ -715,8 +751,18 @@ app.get("/bids-received", (_, res) => {
 
 app.get("/bids-received/:auctionId", (req, res) => {
   const auctionId = req.params.auctionId;
+  const queryParams = req.query;
 
-  if (!bidsReceived[auctionId]) {
+  if (!auctionId) {
+    res.status(404).json({
+      status: "error",
+      message: "No auction ID provided"
+    });
+    return
+  }
+
+  const bids = bidsReceived[auctionId]
+  if (!bids) {
     res.status(404).json({
       status: "error",
       message: "No bids received found for this auction ID"
@@ -724,7 +770,14 @@ app.get("/bids-received/:auctionId", (req, res) => {
     return
   }
 
-  res.json(bidsReceived[auctionId]);
+  if (queryParams.condensed) {
+    const randomIndex = Math.floor(Math.random() * bids.length)
+    const randomBid = bids[randomIndex]
+    console.log("WANCHANG:", randomBid)
+    res.json([randomBid])
+  } else {
+    res.json(bidsReceived[auctionId]);
+  }
 });
 
 app.post("/bids-received", (req, res) => {

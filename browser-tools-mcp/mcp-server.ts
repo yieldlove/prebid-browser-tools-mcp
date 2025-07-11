@@ -1452,11 +1452,12 @@ server.tool(
   "Retrieves bid requests for an auction. If auction ID is omitted, it will retrieve all available bid requests per auction.",
   {
     auctionId: z.string().optional(),
+    condensed: z.boolean().optional(),
   },
-  async ({ auctionId }) => {
+  async ({ auctionId, condensed }) => {
     return await withServerConnection(async () => {
       const url = auctionId
-        ? `http://${discoveredHost}:${discoveredPort}/bid-requests/${auctionId}`
+        ? `http://${discoveredHost}:${discoveredPort}/bid-requests/${auctionId}${condensed ? '?condensed=true' : ''}`
         : `http://${discoveredHost}:${discoveredPort}/bid-requests`;
       const response = await fetch(url);
       const json = await response.json();
@@ -1477,10 +1478,11 @@ server.tool(
   "Retrieves bids received for an auction",
   {
     auctionId: z.string(),
+    condensed: z.boolean().optional(),
   },
-  async ({ auctionId }) => {
+  async ({ auctionId, condensed }) => {
     return await withServerConnection(async () => {
-      const url = `http://${discoveredHost}:${discoveredPort}/bids-received/${auctionId}`;
+      const url = `http://${discoveredHost}:${discoveredPort}/bids-received/${auctionId}${condensed ? '?condensed=true' : ''}`;
       const response = await fetch(url);
       const json = await response.json();
       return {
