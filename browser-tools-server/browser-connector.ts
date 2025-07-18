@@ -20,6 +20,13 @@ import {
 } from "./lighthouse/index.js";
 import * as net from "net";
 import { runBestPracticesAudit } from "./lighthouse/best-practices.js";
+import {
+  truncateForPrebidLogs,
+  truncateInlineCssStyles,
+  removeRedundantFields,
+  convertTimestampToTime,
+  shortenMessageField
+} from "./log-processors.js";
 
 /**
  * Converts a file path to the appropriate format for the current platform
@@ -388,8 +395,8 @@ app.post("/extension-log", (req, res) => {
       console.log("Adding console log:", {
         level: data.level,
         message:
-          data.message?.substring(0, 100) +
-          (data.message?.length > 100 ? "..." : ""),
+          data.message?.substring(0, 300) +
+          (data.message?.length > 300 ? "..." : ""),
         timestamp: data.timestamp,
       });
       consoleLogs.push(data);
@@ -469,12 +476,22 @@ app.post("/extension-log", (req, res) => {
 
 // Update GET endpoints to use the new function
 app.get("/console-logs", (req, res) => {
-  const truncatedLogs = truncateLogsToQueryLimit(consoleLogs);
+  let logs = truncateForPrebidLogs(consoleLogs);
+  logs = truncateInlineCssStyles(logs);
+  logs = removeRedundantFields(logs);
+  logs = convertTimestampToTime(logs);
+  logs = shortenMessageField(logs);
+  const truncatedLogs = truncateLogsToQueryLimit(logs);
   res.json(truncatedLogs);
 });
 
 app.get("/console-errors", (req, res) => {
-  const truncatedLogs = truncateLogsToQueryLimit(consoleErrors);
+  let logs = truncateForPrebidLogs(consoleErrors);
+  logs = truncateInlineCssStyles(logs);
+  logs = removeRedundantFields(logs);
+  logs = convertTimestampToTime(logs);
+  logs = shortenMessageField(logs);
+  const truncatedLogs = truncateLogsToQueryLimit(logs);
   res.json(truncatedLogs);
 });
 
