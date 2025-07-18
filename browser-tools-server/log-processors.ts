@@ -17,7 +17,7 @@ export function truncateInlineCssStyles(logs: any[]): any[] {
     if (log.message && typeof log.message === "string") {
       let cleaned = log.message;
       // Remove a single leading %c at the start of the message
-      cleaned = cleaned.replace(/^%c\s*/, "");
+      cleaned = cleaned.replaceAll(/%c/g, " ");
       // Only remove specific CSS key-value pairs
       cleaned = cleaned.replace(/\b(display|color|background|padding|border-radius)\s*:\s*[^;]+;/g, "");
       // Merge multiple spaces into one
@@ -30,17 +30,9 @@ export function truncateInlineCssStyles(logs: any[]): any[] {
 }
 
 // Truncator: remove 'type' field from each log
-export function removeTypeField(logs: any[]): any[] {
+export function removeRedundantFields(logs: any[]): any[] {
   return logs.map((log) => {
-    const { type, ...rest } = log;
-    return { ...rest };
-  });
-}
-
-// Truncator: remove 'level' field from each log
-export function removeLevelField(logs: any[]): any[] {
-  return logs.map((log) => {
-    const { level, ...rest } = log;
+    const { type, level, ...rest } = log;
     return { ...rest };
   });
 }
@@ -60,7 +52,7 @@ export function convertTimestampToTime(logs: any[]): any[] {
       const { timestamp, ...rest } = log;
       return { ...rest, time };
     }
-    return { ...log };
+    return log
   });
 }
 

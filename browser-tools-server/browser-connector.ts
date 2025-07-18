@@ -23,8 +23,7 @@ import { runBestPracticesAudit } from "./lighthouse/best-practices.js";
 import {
   truncateForPrebidLogs,
   truncateInlineCssStyles,
-  removeTypeField,
-  removeLevelField,
+  removeRedundantFields,
   convertTimestampToTime,
   shortenMessageField
 } from "./log-processors.js";
@@ -479,8 +478,7 @@ app.post("/extension-log", (req, res) => {
 app.get("/console-logs", (req, res) => {
   let logs = truncateForPrebidLogs(consoleLogs);
   logs = truncateInlineCssStyles(logs);
-  logs = removeTypeField(logs);
-  logs = removeLevelField(logs);
+  logs = removeRedundantFields(logs);
   logs = convertTimestampToTime(logs);
   logs = shortenMessageField(logs);
   const truncatedLogs = truncateLogsToQueryLimit(logs);
@@ -490,8 +488,7 @@ app.get("/console-logs", (req, res) => {
 app.get("/console-errors", (req, res) => {
   let logs = truncateForPrebidLogs(consoleErrors);
   logs = truncateInlineCssStyles(logs);
-  logs = removeTypeField(logs);
-  logs = removeLevelField(logs);
+  logs = removeRedundantFields(logs);
   logs = convertTimestampToTime(logs);
   logs = shortenMessageField(logs);
   const truncatedLogs = truncateLogsToQueryLimit(logs);
