@@ -607,7 +607,7 @@ function detachDebugger() {
 }
 
 // Move the console message listener outside the panel creation
-const consoleMessageListener = async (source, method, params) => {
+const consoleMessageListener = (source, method, params) => {
   // Only process events for our tab
   if (source.tabId !== currentTabId) {
     return;
@@ -635,8 +635,8 @@ const consoleMessageListener = async (source, method, params) => {
     if (args.length > 0) {
       // Try to build a meaningful representation of all arguments
       try {
-        formattedMessage = await args
-          .map(async (arg) => {
+        formattedMessage = args
+          .map((arg) => {
             // Handle different types of arguments
             if (arg.type === "string") {
               return arg.value;
@@ -646,8 +646,8 @@ const consoleMessageListener = async (source, method, params) => {
               console.log("Large object detected, size:", objSize, "preview:", arg.preview.properties, arg);
 
               if (isLargeLogRelevant(args)) {
-                const entry = await retrieveLargeLog({ objectId: arg.objectId, args, source })
-                return entry && sendToBrowserConnector(entry)
+                handleLargeLog({ objectId: arg.objectId, args, source });
+                return 
               }
 
               return JSON.stringify(arg.preview);
@@ -688,7 +688,7 @@ const consoleMessageListener = async (source, method, params) => {
 
 const isLargeLogRelevant = (logArgs) => logArgs.find(({ value }) => YL_LARGE_LOGS_REGEX.test(value))
 
-const retrieveLargeLog = async ({ objectId, args, source }) => {
+const retrieveLargeLog = ({ objectId, args, source }) => {
   return new Promise((resolve, reject) => {
     if (!objectId) reject("No objectId found for large YL log. Cannot retrieve original object:", args);
 
@@ -737,6 +737,18 @@ const retrieveLargeLog = async ({ objectId, args, source }) => {
     );
   });
 }
+
+const handleLargeLog = async ({ objectId, args, source }) => {
+  try {
+    const entry = await retrieveLargeLog({ objectId, args, source });
+    if (entry) {
+      await sendToBrowserConnector(entry);
+    }
+  } catch (err) {
+    console.error('Error retrieving large log:', err);
+  }
+};
+
 
 // 2) Use DevTools Protocol to capture console logs
 chrome.devtools.panels.create("BrowserToolsMCP", "", "panel.html", (panel) => {
