@@ -213,6 +213,27 @@ server.tool(
   }
 );
 
+server.tool(
+  "getConsoleWarnings",
+  "Check our browsers console warnings",
+  async () => {
+    return await withServerConnection(async () => {
+      const response = await fetch(
+        `http://${discoveredHost}:${discoveredPort}/console-warnings`
+      );
+      const json = await response.json();
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(json, null, 2),
+          },
+        ],
+      };
+    });
+  }
+);
+
 server.tool("getNetworkErrors", "Check our network ERROR logs", async () => {
   return await withServerConnection(async () => {
     const response = await fetch(

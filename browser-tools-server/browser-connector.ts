@@ -149,6 +149,7 @@ function getDefaultDownloadsFolder(): string {
 // We store logs in memory
 const consoleLogs: any[] = [];
 const consoleErrors: any[] = [];
+const consoleWarnings: any[] = [];
 const networkErrors: any[] = [];
 const networkSuccess: any[] = [];
 const allXhr: any[] = [];
@@ -407,6 +408,16 @@ app.post("/extension-log", (req, res) => {
         consoleLogs.shift();
       }
       break;
+    case "console-warning":
+      console.log("Adding console warning:", {
+        level: data.level,
+        message:
+          data.message?.substring(0, 100) +
+          (data.message?.length > 100 ? "..." : ""),
+        timestamp: data.timestamp,
+      });
+      consoleWarnings.push(data);
+      break;
     case "console-error":
       console.log("Adding console error:", {
         level: data.level,
@@ -466,6 +477,7 @@ app.post("/extension-log", (req, res) => {
   console.log("Current log counts:", {
     consoleLogs: consoleLogs.length,
     consoleErrors: consoleErrors.length,
+    consoleWarnings: consoleWarnings.length,
     networkErrors: networkErrors.length,
     networkSuccess: networkSuccess.length,
   });
@@ -487,6 +499,16 @@ app.get("/console-logs", (req, res) => {
 
 app.get("/console-errors", (req, res) => {
   let logs = truncateForPrebidLogs(consoleErrors);
+  logs = truncateInlineCssStyles(logs);
+  logs = removeRedundantFields(logs);
+  logs = convertTimestampToTime(logs);
+  logs = shortenMessageField(logs);
+  const truncatedLogs = truncateLogsToQueryLimit(logs);
+  res.json(truncatedLogs);
+});
+
+app.get("/console-warnings", (req, res) => {
+  let logs = truncateForPrebidLogs(consoleWarnings);
   logs = truncateInlineCssStyles(logs);
   logs = removeRedundantFields(logs);
   logs = convertTimestampToTime(logs);
@@ -544,6 +566,7 @@ function clearAllLogs() {
   console.log("Wiping all logs...");
   consoleLogs.length = 0;
   consoleErrors.length = 0;
+  consoleWarnings.length = 0;
   networkErrors.length = 0;
   networkSuccess.length = 0;
   allXhr.length = 0;
@@ -1052,8 +1075,7 @@ export class BrowserConnector {
           err
         );
         throw new Error(
-          `Failed to create screenshot directory: ${
-            err instanceof Error ? err.message : String(err)
+          `Failed to create screenshot directory: ${err instanceof Error ? err.message : String(err)
           }`
         );
       }
@@ -1076,8 +1098,7 @@ export class BrowserConnector {
           err
         );
         throw new Error(
-          `Failed to save screenshot: ${
-            err instanceof Error ? err.message : String(err)
+          `Failed to save screenshot: ${err instanceof Error ? err.message : String(err)
           }`
         );
       }

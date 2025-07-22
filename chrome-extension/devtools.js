@@ -634,8 +634,14 @@ const consoleMessageListener = (source, method, params) => {
       }
     }
 
+    const logTypes = {
+      error: "console-error",
+      warning: "console-warning",
+      log: "console-log",
+    };
+
     const entry = {
-      type: params.type === "error" ? "console-error" : "console-log",
+      type: logTypes[params.type] ?? logTypes.log,
       level: params.type,
       message: formattedMessage,
       timestamp: Date.now(),
