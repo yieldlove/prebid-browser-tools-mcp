@@ -29,7 +29,31 @@
                         ]
                     }
                 }
-            ]
+            ],
+            "$refererInfo": {
+                "reachedTop": true,
+                "isAmp": false,
+                "numIframes": 0,
+                "stack": [
+                    "https://www.duden.de/suchen/dudenonline/l"
+                ],
+                "topmostLocation": "https://www.duden.de/suchen/dudenonline/l",
+                "location": "https://www.duden.de/suchen/dudenonline/l",
+                "canonicalUrl": "https://www.duden.de/suchen/dudenonline/l",
+                "page": "https://www.duden.de/suchen/dudenonline/l",
+                "domain": "www.duden.de",
+                "ref": "https://www.duden.de/",
+                "legacy": {
+                    "reachedTop": true,
+                    "isAmp": false,
+                    "numIframes": 0,
+                    "stack": [
+                        "https://www.duden.de/suchen/dudenonline/l"
+                    ],
+                    "referer": "https://www.duden.de/suchen/dudenonline/l",
+                    "canonicalUrl": "https://www.duden.de/suchen/dudenonline/l"
+                }
+            }
         },
         "$bids-received": {
             "bidderCode": "stroeerCore",

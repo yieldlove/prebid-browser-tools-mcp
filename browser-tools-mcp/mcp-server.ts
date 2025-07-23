@@ -1497,6 +1497,26 @@ server.tool(
   }
 );
 
+
+server.tool(
+  "getCurrentUrl",
+  "Retrieves the current URL of the browser",
+  async () => {
+    return await withServerConnection(async () => {
+      const response = await fetch(`http://${discoveredHost}:${discoveredPort}/current-url`);
+      const json = await response.json();
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(json, null, 2),
+          },
+        ],
+      };
+    });
+  }
+);
+
 // Start receiving messages on stdio
 (async () => {
   try {

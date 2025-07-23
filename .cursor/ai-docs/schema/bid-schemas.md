@@ -7,6 +7,7 @@
         2. `bids` - Array of bids to send, length must not be 0.
         3. `bids[index].schain` - The Supply Chain Object tracks the path of an impression and prevents unauthorized reselling. It provides legitimacy for the buyer that the impression was handled by legitimate parties. This field must exist.
         4. `bids[index].userId` - Used to identify users across different websites. Unless it's a user first visit, this field will always be populated.
+        5. `referInfo` - Contains site information from the client. The domain provided here ($referInfo.domain) should equal the domain currently being evaluated.
 
 -  $bids-received - *Received bids from SSPs*
 

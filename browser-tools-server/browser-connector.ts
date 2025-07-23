@@ -710,7 +710,7 @@ app.get("/bid-requests/:auctionId", (req, res) => {
     const randomBidder = bidRequest[Math.floor(Math.random() * (bidRequest.length - 1))]
     const bidderEntries = Object.entries(randomBidder)
 
-    const requiredFields = ['bidderCode', 'auctionId', 'ortb2', 'gdprConsent', 'bids'];
+    const requiredFields = ['bidderCode', 'auctionId', 'ortb2', 'gdprConsent', 'bids', 'refererInfo'];
     const condensedBidderFields: Bid = {}
 
     bidderEntries.forEach(([field, value]: [string, any]) => {

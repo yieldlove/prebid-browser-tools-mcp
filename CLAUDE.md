@@ -19,15 +19,18 @@ Continue to `AI Instruction` if the user has explicitly prompted `wrapper health
 
 Follow the steps outlined below:
 
-**Step 1**
-If variables `$auctionId` and `$bidRequest` existis in memory delete them
+**Step 1** - #Delete cache*
+Delete the values of `$auctionId`, `$domain` and `$bidRequest` if they exist in memory
 
-**Step 2** - *Assert that bids are properly requested:*
+**Step 2** - *Retrieve the domain*
+$domain Invoke the tool `getCurrentUrl`. Extract the domain from the URL and save it in memory to a variable called $domain and print: "Starting wrapper health check for $domain". Proceed to step 2.
+
+**Step 3** - *Assert that bids are properly requested:*
 
 <ins>The expected outcome for this step should reflect what is located in: $outcome.$bid-request</ins>
 
 Invoke the browser mcp tool `getBidRequests` WITH NO ARGUMENT. An array with the following schema should be returned: `{ [auctionId: string]: any[] }`.
-        
+
 Next select a random auction id from the list (do not be lazy and take the first one), store the string in memory as `$auctionId`.
     
 Next invoke `getBidRequests` WITH the following arguments: `{$auctionId, condensed: true}`
@@ -36,13 +39,13 @@ Next if an array was returened, index the first element and store it as `$bidReq
 
 Next verify that the `auctionId` property of `$bidRequest` is the same as `$auctionId`.
 
-Next analize `$bidRequest` according to `$documentation.$bid-request` and print a condensed schema representation of the properties evaluated (use the actual values in the schema), for each operation, so that the user can manually verify your reasoning.
+Next analize `$bidRequest` according to `$documentation.$bid-request` (THIS IS PARAMOUNT) and print a schema representation of the properties evaluated (use the actual values in the schema), so that the user can manually verify your reasoning. 
 
-**Setp 3** - *Assert that bids are received for the auction*
+**Setp 4** - *Assert that bids are received for the auction*
 
 <ins>The expected outcome for this step should reflect what is located in: $outcome.$bids-received</ins>
 
 Invoke the browser mcp tool `getBidsReceived` with the argument `{$auctionId, condensed: true}`. The response should be an array containing the received bids.
 
-Next index the first entry and assert that it's a valid bid response according to `$documentation.$bids-received`
+Next index the first entry and assert that it's a valid bid response according to `$documentation.$bids-received` (THIS IS PARAMOUNT)
 <!-- END -->
