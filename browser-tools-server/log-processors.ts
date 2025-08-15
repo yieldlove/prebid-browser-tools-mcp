@@ -61,7 +61,7 @@ export function shortenMessageField(logs: any[]): any[] {
   return logs.map((log) => {
     if ('message' in log) {
       const { message, ...rest } = log;
-      return { ...rest, msg: message };
+      return { ...rest, msg: message.length > 300 ? message.substring(0, 300) + "..." : message };
     }
     return { ...log };
   });
