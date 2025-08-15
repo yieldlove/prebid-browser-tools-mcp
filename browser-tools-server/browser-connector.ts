@@ -710,7 +710,7 @@ app.get("/bid-requests/:auctionId", (req, res) => {
     const randomBidder = bidRequest[Math.floor(Math.random() * (bidRequest.length - 1))]
     const bidderEntries = Object.entries(randomBidder)
 
-    const requiredFields = ['bidderCode', 'auctionId', 'ortb2', 'gdprConsent', 'bids', 'refererInfo'];
+    const requiredFields = ['bidderCode', 'auctionId', 'gdprConsent', 'bids', 'refererInfo'];
     const condensedBidderFields: Bid = {}
 
     bidderEntries.forEach(([field, value]: [string, any]) => {
@@ -718,7 +718,14 @@ app.get("/bid-requests/:auctionId", (req, res) => {
         const randomIndex = Math.floor(Math.random() * value.length)
         const randomBid = value[randomIndex]
 
-        condensedBidderFields[field] = randomBid
+        const { userId, schain, bidder, params } = randomBid
+
+        condensedBidderFields[field] = {
+          userId,
+          schain,
+          bidder,
+          params
+        }
       }
       else if (requiredFields.includes(field)) {
         condensedBidderFields[field] = value
@@ -773,7 +780,7 @@ app.get("/bids-received/:auctionId", (req, res) => {
   if (queryParams.condensed) {
     const randomIndex = Math.floor(Math.random() * bids.length)
     const randomBid = bids[randomIndex]
-    console.log("WANCHANG:", randomBid)
+
     res.json([randomBid])
   } else {
     res.json(bidsReceived[auctionId]);

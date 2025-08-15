@@ -1457,7 +1457,7 @@ server.tool(
   async ({ auctionId, condensed }) => {
     return await withServerConnection(async () => {
       const url = auctionId
-        ? `http://${discoveredHost}:${discoveredPort}/bid-requests/${auctionId}${condensed ? '?condensed=true' : ''}`
+        ? `http://${discoveredHost}:${discoveredPort}/bid-requests/${auctionId}?condensed=${condensed}`
         : `http://${discoveredHost}:${discoveredPort}/bid-requests`;
       const response = await fetch(url);
       const json = await response.json();
