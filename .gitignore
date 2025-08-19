@@ -2,3 +2,4 @@ node_modules
 dist
 .port
 .DS_Store
+browser-data
