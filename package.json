@@ -1,5 +1,8 @@
 {
   "devDependencies": {
     "playwright": "^1.54.2"
+  },
+  "dependencies": {
+    "yargs": "^18.0.0"
   }
 }
