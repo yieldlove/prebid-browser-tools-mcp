@@ -1,11 +1,12 @@
 {
   "domains": [
-    "dcode.fr",
-    "mathebibel.de"
+    "mathebibel.de",
+    "dcode.fr"
   ],
   "sendLogsToServer": true,
   "testIdSystems": true,
+  "testTCF2": true,
   "headless": true,
-  "wipeBrowserUserData": true,
+  "wipeBrowserUserData": false,
   "preserveLogs": false
 }
