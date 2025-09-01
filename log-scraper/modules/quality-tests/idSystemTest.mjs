@@ -2,6 +2,7 @@ const EXPECTED_ID_SYSTEM_SCHEMA = {
   'criteoIdSystem': { alias: 'criteoId', type: 'string' },
   'id5IdSystem': { alias: 'id5id', type: 'object', expectedKeys: ['uid', 'ext'] },
   'sharedIdSystem': { alias: 'pubcid', type: 'string' },
+  'identityLinkIdSystem': { alias: 'identityLinkId', type: 'string' },
 };
 
 
@@ -42,12 +43,12 @@ export function testIdSystemIntegration(records, prebidLogs, domain) {
   }
 
   const filteredLogs = prebidLogs.filter(log => log.text.includes('INFO: User ID - usersync config updated for'))
-  const idxSuccessfulUserSyncLog = filteredLogs.findIndex((log)=> log.text.includes(`usersync config updated for ${wrapperConfigIdSystems.length.toString()}`))
+  const idxSuccessfulUserSyncLog = filteredLogs.findIndex((log) => log.text.includes(`usersync config updated for ${wrapperConfigIdSystems.length.toString()}`))
 
   if (!filteredLogs.length) {
     console.error(domain.toUpperCase(), 'No user sync logs found\n')
     success = false
-  }else if(idxSuccessfulUserSyncLog === -1) {
+  } else if (idxSuccessfulUserSyncLog === -1) {
     console.error(domain.toUpperCase(), 'User sync update log found, but not all id systems were updated:', filteredLogs.map(log => log.text.slice(110)))
     success = false
   }
@@ -57,7 +58,7 @@ export function testIdSystemIntegration(records, prebidLogs, domain) {
     console.log('All configured id systems are enabled, their respective client-side user IDs are present and Prebid user sync was successful.\n')
     console.log('\x1b[32m--------ID SYSTEMS TEST SUCCEDED--------\x1b[0m\n')
     return true
-  }else{
+  } else {
     console.log('\n\x1b[31m--------ID SYSTEMS TEST FAILED--------\x1b[0m')
   }
 }

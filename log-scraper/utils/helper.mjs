@@ -22,11 +22,11 @@ export function setupEventListeners(page, siteLogs) {
       siteLogs.logs.push(entry)
     }
   });
-  
+
   page.on('pageerror', err => siteLogs.errors.push({
     type: 'page error', text: err.message, ts: Date.now()
   }));
-  
+
   page.on('requestfailed', req => siteLogs.requestsFailed.push({
     url: req.url(), method: req.method(), error: req.failure()?.errorText, ts: Date.now()
   }));
@@ -37,18 +37,18 @@ export async function getUserIdsFromChromeConsole(page) {
     const result = {}
 
     const pbjsUserIds = window.pbjsYLHH?.getUserIds()
-    result.pbjsUserIds = pbjsUserIds 
-    
-    
+    result.pbjsUserIds = pbjsUserIds
+
+
     const wrapperConfigPrebidModules = (window.YLHH?.bidder?.settings?.prebid_modules || [])
     const enabledIdSystems = wrapperConfigPrebidModules.filter(module => module.includes('IdSystem'))
     result.wrapperConfigIdSystems = enabledIdSystems
-    
+
     return result
   })
-  
-  if (!Object.keys(chromeConsoleKeyValues?.pbjsUserIds).length)  console.error('Failed to access "window.pbjsYLHH.getUserIds()"', chromeConsoleKeyValues.pbjsUserIds)
-  if (!chromeConsoleKeyValues.wrapperConfigIdSystems?.length)  console.error('Failed to access "window.YLHH.bidder.settings.prebid_modules"', chromeConsoleKeyValues.wrapperConfigIdSystems)
+
+  if (!Object.keys(chromeConsoleKeyValues?.pbjsUserIds).length) console.error('Failed to access "window.pbjsYLHH.getUserIds()"', chromeConsoleKeyValues.pbjsUserIds)
+  if (!chromeConsoleKeyValues.wrapperConfigIdSystems?.length) console.error('Failed to access "window.YLHH.bidder.settings.prebid_modules"', chromeConsoleKeyValues.wrapperConfigIdSystems)
 
   return chromeConsoleKeyValues
 }
@@ -67,9 +67,9 @@ export const canParseWebsiteDomains = (args) => {
 export const canParseExecutionConfig = () => {
   let parsedExecutionConfig
   try {
-      parsedExecutionConfig = JSON.parse(fs.readFileSync('./execution-config.json', 'utf8'))
+    parsedExecutionConfig = JSON.parse(fs.readFileSync('./execution-config.json', 'utf8'))
   } catch (error) {
     console.error('Failed to parse execution config, please provide a valid JSON file', error)
-  } 
-    return parsedExecutionConfig
+  }
+  return parsedExecutionConfig
 }
