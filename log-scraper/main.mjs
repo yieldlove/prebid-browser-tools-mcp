@@ -12,7 +12,7 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 import yargs from 'yargs';
-import { canParseExecutionConfig, canParseWebsiteDomains, getUserIdsFromChromeConsole, getYLSiteName, setupEventListeners } from './utils/helper.mjs';
+import { canParseExecutionConfig, canParseWebsiteDomains, getDynamicSettings, getIdData, getRandomDelay, getRandomUserAgent, getRandomViewport, getYLSiteName, setupEventListeners, simulateRealisticNavigation } from './utils/helper.mjs';
 import { testIdSystemIntegration } from './modules/quality-tests/idSystemTest.mjs';
 import { isTCF2Denied } from './modules/quality-tests/tcf2.mjs';
 import { clickConsentManager } from './consent/crawl.js';
@@ -51,7 +51,6 @@ const save = (browser) => {
   const testTCF2 = canUseExeConfig ? exeConfig?.testTCF2 : argv.testTCF2
   const headless = canUseExeConfig ? exeConfig?.headless : argv.headless
   const wipeBrowserUserData = canUseExeConfig ? exeConfig?.wipeBrowserUserData : argv.wipeUserData
-  const gdprApplies = canUseExeConfig ? exeConfig?.gdprApplies : argv.gdprApplies
 
 
   if (wipeBrowserUserData) {
@@ -63,17 +62,41 @@ const save = (browser) => {
   const context = await chromium.launchPersistentContext('./browser-data', {
     channel: 'chrome',
     headless: headless,
-    args: ['--enable-logging=stderr', '--v=1', '--load-extension=./chrome-extension'], // Chrome logging flags (stderr)
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36'
+    args: [
+      '--enable-logging=stderr',
+      '--v=1',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-features=VizDisplayCompositor',
+      '--disable-web-security',
+      '--disable-features=TranslateUI',
+      '--disable-ipc-flooding-protection',
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      // DevTools args
+      ...(headless ? [] : ['--auto-open-devtools-for-tabs'])
+    ],
+    userAgent: getRandomUserAgent(),
+    viewport: getRandomViewport(),
+    extraHTTPHeaders: {
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+      'Cache-Control': 'max-age=0',
+      'Upgrade-Insecure-Requests': '1'
+    }
   });
 
   for (const [index, domain] of domains.entries()) {
-    console.log('═'.repeat(60));
+    console.log('═'.repeat(60) + '\n');
     console.log(`\n🔄 Testing ${domain} (${index + 1}/${domains.length})`)
 
     // Initialize results
     results[domain] = { initError: null, failedTests: [], success: false }
     const { failedTests } = results[domain]
+
     // Initialize site logs
     const currentSiteLogs = {
       logs: [],
@@ -82,31 +105,40 @@ const save = (browser) => {
       warnings: []
     }
 
-    // Setup event listeners
+    // Create tab for the site
     const page = await context.newPage();
+
+    // Setup event listeners
     setupEventListeners(page, currentSiteLogs)
 
+    // Navigation
     try {
-      // Navigation with error handling
-      await page.goto(`https://${domain}?yldebug=true`, {
-        waitUntil: 'networkidle',
-        timeout: 15000
-      });
-
-      await page.waitForTimeout((Math.random() * 4000) + 31000)
-      const consentResult = gdprApplies ? await clickConsentManager(page) : console.log('GDPR does not apply')
-      if (consentResult.status === 'clicked') {
-        console.log('Consent accepted');
-        await page.waitForTimeout(3000)
-      }
-      else {
-        //TODO: Check if consent was already accepted
-        console.warn('Failed to accept consent or consent was already accepted', { consentResult })
-      }
-
+      await simulateRealisticNavigation(page, domain);
     } catch (error) {
       console.error(`${domain.toUpperCase()} Navigation failed:`, error.message)
       results[domain].initError = 'Failed to navigate to site'
+      await page.close()
+      continue
+    }
+
+    // Consent handling
+    try {
+      const isConsent = await page.evaluate(() => window.yieldlove_cmp?.tcData)
+      if (!isConsent) {
+        // Constent is quite slow to load on some sites hence 5-7 seconds is needed
+        await page.waitForTimeout(getRandomDelay(5000, 7000))
+
+        const consentResult = await clickConsentManager(page)
+        if (consentResult.status === 'clicked') {
+          // Wait for prebid auctions to finish
+          await page.waitForTimeout(3000)
+        } else {
+          throw new Error('Failed to accept consent', { consentResult })
+        }
+      }
+    } catch (error) {
+      console.error(`${domain.toUpperCase()} Failed to accept consent:`, error.message)
+      results[domain].initError = 'Failed to accept consent'
       await page.close()
       continue
     }
@@ -128,6 +160,22 @@ const save = (browser) => {
       continue
     }
 
+    let dynamicSettings
+    try {
+      dynamicSettings = await getDynamicSettings(page)
+      if (typeof dynamicSettings !== 'object') {
+        console.error(`${domain.toUpperCase()} Failed to get dynamic settings: ${JSON.stringify(dynamicSettings)}`)
+        results[domain].initError = 'Failed to get dynamic settings'
+        await page.close()
+        continue
+      }
+    } catch (error) {
+      console.error(`${domain.toUpperCase()} Error getting dynamic settings:`, error.message)
+      results[domain].initError = 'Error getting dynamic settings'
+      await page.close()
+      continue
+    }
+
     if (sendLogsToServer) {
       //TODO
     }
@@ -141,20 +189,22 @@ const save = (browser) => {
 
     if (testIdSystems) {
       console.log('\n\x1b[34m--------ID SYSTEM INTEGRATION TEST-------\x1b[0m\n')
-      const chromeConsoleKeyValues = await getUserIdsFromChromeConsole(page)
-      const isExpectedKeys = Object.keys(chromeConsoleKeyValues).every(key => ['wrapperConfigIdSystems', 'pbjsUserIds'].includes(key))
+      const retrievedIdData = await getIdData(page)
+      const isExpectedKeys = Object.keys(retrievedIdData).every(key => ['wrapperConfigIdSystems', 'pbjsUserIds'].includes(key))
 
       if (isExpectedKeys) {
-        Object.assign(currentSiteLogs, chromeConsoleKeyValues)
+        Object.assign(currentSiteLogs, retrievedIdData)
+        let { pbjsUserIds, wrapperConfigIdSystems } = currentSiteLogs
 
-        const isIdSystemIntegration = testIdSystemIntegration(currentSiteLogs, currentSiteLogs.logs, domain)
+        const isIdSystemIntegration = testIdSystemIntegration({ pbjsUserIds, wrapperConfigIdSystems, dynamicSettings, prebidLogs: currentSiteLogs.logs, domain })
+
         !isIdSystemIntegration && failedTests.push('ID SYSTEMS')
       } else {
         currentSiteLogs.pbjsUserIds = 'user ids not found'
         currentSiteLogs.wrapperConfigIdSystems = 'id systems in wrapper config not found'
 
         console.error(domain.toUpperCase(), ' [QT][ID SYSTEMS] Failed to assert proper enablement of id systems, expected keys were not found:')
-        console.log({ expectedKeys: 'wrapperConfigIdSystems,pbjsUserIds', actualKeys: Object.keys(chromeConsoleKeyValues).sort().join(',') })
+        console.log({ expectedKeys: 'wrapperConfigIdSystems,pbjsUserIds', actualKeys: Object.keys(retrievedIdData).sort().join(',') })
         failedTests.push('ID SYSTEMS')
       }
     }

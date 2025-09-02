@@ -102,6 +102,17 @@
         ]
     },
     {
+        "id": "Ogury Ltd",
+        "name": "Ogury Ltd",
+        "brand": "Ogury",
+        "actions": [
+            {
+                "type": "css-selector",
+                "value": ".cmptxt_btn_yes"
+            }
+        ]
+    },
+    {
         "id": "google-funding-choices",
         "name": "Google Funding Choices",
         "brand": "Google",

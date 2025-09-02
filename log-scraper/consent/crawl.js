@@ -4,25 +4,6 @@ const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
 
-// Optional dependencies
-let yamlParser = null;
-try {
-    yamlParser = require("yaml");
-} catch (e) {
-    try {
-        yamlParser = require("js-yaml");
-    } catch (e2) {
-        yamlParser = null;
-    }
-}
-
-let sqlite3 = null;
-try {
-    sqlite3 = require("sqlite3");
-} catch (e) {
-    sqlite3 = null;
-}
-
 const MODULE_DIR = __dirname;
 const CONSENT_MANAGERS_FILE = path.join(MODULE_DIR, "cmp-list.json");
 
@@ -63,6 +44,8 @@ function getConsentManagers() {
     }
 }
 
+
+
 async function clickConsentManager(page) {
     const consentManagers = getConsentManagers();
     for (const cmp of consentManagers) {
@@ -92,18 +75,26 @@ async function clickConsentManager(page) {
                 for (const sel of action.value || []) {
 
                     const candidate = parentLocator.locator(sel).first();
-                    const count = await candidate.count();
-                    const v = await candidate.isVisible()
-                    console.log('count', count)
-                    console.log('v', v)
-                    const isVisible = await candidate.isVisible().catch((e) => console.debug("Candidate not visible", e))
+                    const elementExists = await candidate.count() > 0
+                    const isElementVisible = await candidate.isVisible().catch((e) => console.debug("[[] Element is not visible", e))
 
-                    if (isVisible) {
+                    if (isElementVisible) {
                         locator = candidate;
                         cmp["selector-list-item"] = sel;
                         break;
+                    } else if (elementExists) {
+                        console.log(`[CONSENT CRAWL] Element is not visible, but it exists in DOM, attempting to click using native JS`);
+                        const jsClickSuccess = await performJavaScriptClickOnElement(candidate, sel);
+
+                        if (jsClickSuccess) {
+                            console.log(`[CONSENT CRAWL] JavaScript click succeeded on invisible element using selector: ${sel}`);
+                            return { ...cmp, status: cmp.status || "clicked" };
+                        }
+
+                        console.log(`[CONSENT CRAWL] JavaScript click failed on invisible element using selector: ${sel}`);
                     }
                 }
+
                 if (locator) break;
             } else if (action.type === "xpath") {
                 // Not implemented
@@ -125,30 +116,10 @@ async function clickConsentManager(page) {
         }
     }
 
-    // console.debug(`Unable to accept cookies on: ${page.url()}`);
     return {};
 }
 
-async function getJsonLd(page) {
-    const jsonLd = [];
-    const nodes = await page.locator('script[type="application/ld+json"]').all();
-    for (const node of nodes) {
-        try {
-            const contents = await node.innerText();
-            const clean = contents.trim();
-            const cdataMatch = /\/\/<!\[CDATA\[\s*(.*?)\s*\/\/\]\]>/s.exec(clean);
-            const payload = cdataMatch ? cdataMatch[1] : clean;
-            try {
-                jsonLd.push(JSON.parse(payload));
-            } catch (err) {
-                jsonLd.push({ raw: contents, error: String(err) });
-            }
-        } catch (err) {
-            console.debug("Unable to parse JSON-LD:", err.message);
-        }
-    }
-    return jsonLd;
-}
+
 
 async function getMetaTags(page) {
     const meta = {};
@@ -226,8 +197,6 @@ async function crawlUrl({
             output.screenshot_files = [shotPath];
         }
 
-        // JSON-LD and Meta
-        output.json_ld = await getJsonLd(page);
         output.meta_tags = await getMetaTags(page);
 
         // Pre-consent third-parties
@@ -336,57 +305,37 @@ async function crawlSingle({ url, trackingDomainsList = [], browserConfig = null
     }
 }
 
-async function storeCrawlResults({ data, tableName = "crawl_results", file = null, resultsDbFile = "crawl_results.db" }) {
-    if (file) {
-        const dir = path.dirname(file);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(file, data.map((d) => JSON.stringify(d)).join("\n") + "\n", { encoding: "utf8" });
-    }
-
-    if (resultsDbFile) {
-        if (!sqlite3) {
-            console.warn("sqlite3 not installed; skipping DB storage");
-            return;
-        }
-
-        const dir = path.dirname(resultsDbFile);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-        const db = new sqlite3.Database(resultsDbFile);
-        const schema = getExtractSchema();
-        const columnsSql = Object.keys(schema).map((k) => `${k} TEXT`).join(",");
-        await new Promise((resolve, reject) => {
-            db.run(`CREATE TABLE IF NOT EXISTS ${tableName} (${columnsSql})`, (err) => (err ? reject(err) : resolve()));
-        });
-
-        for (const d of data) {
-            const normalized = {};
-            for (const [k, v] of Object.entries(d)) {
-                if (v && (typeof v === "object")) normalized[k] = JSON.stringify(v);
-                else normalized[k] = v;
+// JavaScript click function that works with both page and iframe contexts
+async function performJavaScriptClickOnElement(locatorContext, selector) {
+    const result = await locatorContext.evaluate((_, sel) => {
+        try {
+            const element = document.querySelector(sel);
+            if (!element) {
+                console.log('Element not found in current context');
+                return
             }
-            const keys = Object.keys(schema);
-            const placeholders = keys.map(() => "?").join(",");
-            const values = keys.map((k) => normalized[k]);
-            await new Promise((resolve, reject) => {
-                db.run(`INSERT INTO ${tableName} VALUES (${placeholders})`, values, (err) => (err ? reject(err) : resolve()));
-            });
-        }
 
-        await new Promise((resolve) => db.close(resolve));
-    }
+            element.click();
+            console.log(`[CONSENT CRAWL] Successfully clicked element using selector: ${sel}`);
+            return true
+
+        } catch (error) {
+            console.error(`[CONSENT CRAWL] JavaScript click error: ${error.message}`);
+            return
+        }
+    }, selector);
+    console.log({ result })
+    return result
 }
 
 module.exports = {
     getExtractSchema,
     getConsentManagers,
     clickConsentManager,
-    getJsonLd,
     getMetaTags,
     crawlUrl,
     crawlBatch,
     crawlSingle,
-    storeCrawlResults,
 };
 
 
