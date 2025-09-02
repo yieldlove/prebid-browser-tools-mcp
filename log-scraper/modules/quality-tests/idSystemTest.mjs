@@ -1,40 +1,67 @@
-const EXPECTED_ID_SYSTEM_SCHEMA = {
+const EXPECTED_ID_SYSTEMS_SCHEMA = {
   'criteoIdSystem': { alias: 'criteoId', type: 'string' },
   'id5IdSystem': { alias: 'id5id', type: 'object', expectedKeys: ['uid', 'ext'] },
   'sharedIdSystem': { alias: 'pubcid', type: 'string' },
+  // TODO: Ask someone how this id is suppouse to look like...
   'identityLinkIdSystem': { alias: 'identityLinkId', type: 'string' },
+  'utiqIdSystem': { alias: 'utiqId', type: 'localstorage' },
+  'utiqMtpIdSystem': { alias: 'utiqMtpId', type: 'localstorage' },
 };
 
 
-export function testIdSystemIntegration(records, prebidLogs, domain) {
+export function testIdSystemIntegration({ pbjsUserIds, wrapperConfigIdSystems, dynamicSettings, prebidLogs, domain }) {
   let success = true
 
-  const retrievedUserIds = records.pbjsUserIds
-  const wrapperConfigIdSystems = records.wrapperConfigIdSystems
-
-  if (!wrapperConfigIdSystems.length || !retrievedUserIds) {
+  if (!wrapperConfigIdSystems.length || !pbjsUserIds) {
     !wrapperConfigIdSystems.length && console.error(domain.toUpperCase(), 'No id systems detected in the wrapper config\n');
-    !retrievedUserIds && console.error('No client-side user IDs detected\n');
+    !pbjsUserIds && console.error('No client-side user IDs detected\n');
     return
   }
 
-  for (const idSystem of wrapperConfigIdSystems) {
-    const isValidIdSystem = EXPECTED_ID_SYSTEM_SCHEMA[idSystem]
+  const dynamicSettingsUserIds = dynamicSettings?.setConfig?.userSync?.userIds || []
+
+  // Utiq specific checks
+  const utiqDynamicSettings = dynamicSettingsUserIds.filter(userId => userId.name.includes('utiq'))
+  const utiqWrapperConfig = wrapperConfigIdSystems.filter(idSystem => idSystem.includes('utiq'))
+
+
+  const expectsUtiq = utiqDynamicSettings.length > 0 || utiqWrapperConfig.length > 0
+  if (expectsUtiq) {
+    if (utiqDynamicSettings.length && !utiqWrapperConfig.length) {
+      console.error(domain.toUpperCase(), 'Utiq id systems are enabled in the dynamic settings, but id systems are not enabled in the wrapper config\n')
+      success = false
+    }
+
+    if (utiqWrapperConfig.length && !utiqDynamicSettings.length) {
+      console.error(domain.toUpperCase(), 'Utiq id systems are enabled in the wrapper config, but user ids are not set in the dynamic settings\n')
+      success = false
+    }
+
+    const isBothUtiqIdSystemsEnabled = utiqDynamicSettings.length === 2 && utiqWrapperConfig.length === 2
+    if (!isBothUtiqIdSystemsEnabled) {
+      console.error(domain.toUpperCase(), 'Both utiq id systems are not enabled in the dynamic settings and the wrapper config but the expected number of utiq id systems enabled was unexpected\n')
+      success = false
+    }
+  }
+
+
+  // Non-Utiq id systems checks
+  for (const idSystem of wrapperConfigIdSystems.filter(idSystem => !idSystem.includes('utiq'))) {
+    const isValidIdSystem = EXPECTED_ID_SYSTEMS_SCHEMA[idSystem]
     if (!isValidIdSystem) {
-      console.error(domain.toUpperCase(), `Module ${idSystem} is enabled but was not found in the expexted id systems. Must be one of ${Object.keys(EXPECTED_ID_SYSTEM_SCHEMA).join(', ')}\n`)
+      console.error(domain.toUpperCase(), `Module ${idSystem} is enabled but was not found in the expexted id systems. Must be one of ${Object.keys(EXPECTED_ID_SYSTEMS_SCHEMA).join(', ')}\n`)
       success = false
       continue
     }
 
-    const userId = retrievedUserIds?.[EXPECTED_ID_SYSTEM_SCHEMA[idSystem]?.alias]
-
-    if (!userId) {
+    const userId = pbjsUserIds?.[EXPECTED_ID_SYSTEMS_SCHEMA[idSystem]?.alias]
+    if (!userId && !idSystem.includes('utiq')) {
       console.error(domain.toUpperCase(), `${idSystem} is enabled but client-side user ID is missing\n`)
       success = false
       continue
     }
 
-    const userIdType = userId && EXPECTED_ID_SYSTEM_SCHEMA[idSystem].type === typeof userId
+    const userIdType = userId && EXPECTED_ID_SYSTEMS_SCHEMA[idSystem].type === typeof userId
     if (!userIdType) {
       console.error(domain.toUpperCase(), `${idSystem} is enabled but client-side user ID is of different expected schema type\n`)
       success = false
