@@ -16,6 +16,7 @@ import { canParseExecutionConfig, canParseWebsiteDomains, getDynamicSettings, ge
 import { testIdSystemIntegration } from './modules/quality-tests/idSystemTest.mjs';
 import { isTCF2Denied } from './modules/quality-tests/tcf2.mjs';
 import { clickConsentManager } from './consent/crawl.js';
+import { fileURLToPath } from 'url';
 
 const logs = {};
 const results = {}
@@ -40,7 +41,7 @@ const save = (browser) => {
   console.log(`Logs saved to ${logPath}\n`);
 }
 
-
+const yieldlove_debug_extension_path = fileURLToPath(new URL('./yl-debug-extension', import.meta.url));
 
 (async () => {
   const domains = (argv.length && canParseWebsiteDomains(argv.domains ?? [])) || exeConfig?.domains
@@ -51,6 +52,7 @@ const save = (browser) => {
   const testTCF2 = canUseExeConfig ? exeConfig?.testTCF2 : argv.testTCF2
   const headless = canUseExeConfig ? exeConfig?.headless : argv.headless
   const wipeBrowserUserData = canUseExeConfig ? exeConfig?.wipeBrowserUserData : argv.wipeUserData
+  const isDebugExtensionEnabled = canUseExeConfig ? exeConfig?.loadDebugExtension : argv.loadDebugExtension
 
 
   if (wipeBrowserUserData) {
@@ -58,9 +60,10 @@ const save = (browser) => {
     console.log('Browser user data wiped')
   }
 
+  if (isDebugExtensionEnabled) console.log('Using YL Debug Extension');
 
   const context = await chromium.launchPersistentContext('./browser-data', {
-    channel: 'chrome',
+    channel: 'chromium',
     headless: headless,
     args: [
       '--enable-logging=stderr',
@@ -76,6 +79,8 @@ const save = (browser) => {
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
       // DevTools args
+      ...(isDebugExtensionEnabled ? [`--disable-extensions-except=${yieldlove_debug_extension_path}`] : []),
+      ...(isDebugExtensionEnabled ? [`--load-extension=${yieldlove_debug_extension_path}`] : []),
       ...(headless ? [] : ['--auto-open-devtools-for-tabs'])
     ],
     userAgent: getRandomUserAgent(),
@@ -88,6 +93,7 @@ const save = (browser) => {
       'Upgrade-Insecure-Requests': '1'
     }
   });
+
 
   for (const [index, domain] of domains.entries()) {
     console.log('═'.repeat(60) + '\n');
@@ -108,12 +114,12 @@ const save = (browser) => {
     // Create tab for the site
     const page = await context.newPage();
 
-    // Setup event listeners
+    // Setup event listeners that will save different types of logs to the currentSiteLogs object
     setupEventListeners(page, currentSiteLogs)
 
     // Navigation
     try {
-      await simulateRealisticNavigation(page, domain);
+      await simulateRealisticNavigation(page, domain, isDebugExtensionEnabled);
     } catch (error) {
       console.error(`${domain.toUpperCase()} Navigation failed:`, error.message)
       results[domain].initError = 'Failed to navigate to site'
@@ -125,16 +131,16 @@ const save = (browser) => {
     try {
       const isConsent = await page.evaluate(() => window.yieldlove_cmp?.tcData)
       if (!isConsent) {
-        // Constent is quite slow to load on some sites hence 5-7 seconds is needed
-        await page.waitForTimeout(getRandomDelay(5000, 7000))
-
         const consentResult = await clickConsentManager(page)
         if (consentResult.status === 'clicked') {
           // Wait for prebid auctions to finish
-          await page.waitForTimeout(3000)
+          await page.waitForTimeout(4000)
         } else {
-          throw new Error('Failed to accept consent', { consentResult })
+          console.log({ consentResult })
+          throw new Error('Failed to accept consent')
         }
+      } else {
+        console.log('Consent already accepted, skipping consent handling.')
       }
     } catch (error) {
       console.error(`${domain.toUpperCase()} Failed to accept consent:`, error.message)

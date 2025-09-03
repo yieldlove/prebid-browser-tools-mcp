@@ -1,12 +1,13 @@
 {
   "domains": [
-    "mathebibel.de",
-    "dcode.fr"
+    "mainpost.de",
+    "duden.de/suchen/dudenonline/hallo"
   ],
   "sendLogsToServer": true,
   "testIdSystems": true,
   "testTCF2": true,
   "headless": true,
   "wipeBrowserUserData": false,
-  "preserveLogs": false
+  "preserveLogs": false,
+  "loadDebugExtension": true
 }

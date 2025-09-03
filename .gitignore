@@ -3,3 +3,4 @@ dist
 .port
 .DS_Store
 browser-data
+logs/

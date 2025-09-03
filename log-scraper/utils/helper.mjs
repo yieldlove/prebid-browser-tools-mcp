@@ -110,7 +110,7 @@ export function getRandomViewport() {
 }
 
 
-export async function simulateRealisticNavigation(page, domain) {
+export async function simulateRealisticNavigation(page, domain, isDebugExtension = false) {
   const referrers = [
     'https://www.google.com/search?q=' + encodeURIComponent(domain),
     'https://www.bing.com/search?q=' + encodeURIComponent(domain),
@@ -127,8 +127,9 @@ export async function simulateRealisticNavigation(page, domain) {
     }).catch(() => { });
   }
 
-  // Now navigate to the target domain
-  await page.goto(`https://${domain}?yldebug=true?`, {
+  // Navigate to the target domain. Using the debug extension is more reliable than using the query parameter
+  const url = `https://${domain}${isDebugExtension ? '' : '?yldebug=true'}`
+  await page.goto(url, {
     waitUntil: 'domcontentloaded',
     timeout: 10000,
     referer: referrer
@@ -137,6 +138,9 @@ export async function simulateRealisticNavigation(page, domain) {
 
   // Some cmp's requires mouse movement or wheel to be scrolled
   await simulateMouseMovement(page, 500);
+
+  // Constent is quite slow to load on some sites hence 5-7 seconds is needed
+  await page.waitForTimeout(getRandomDelay(5000, 7000))
 }
 
 

@@ -4,8 +4,11 @@ const EXPECTED_ID_SYSTEMS_SCHEMA = {
   'sharedIdSystem': { alias: 'pubcid', type: 'string' },
   // TODO: Ask someone how this id is suppouse to look like...
   'identityLinkIdSystem': { alias: 'identityLinkId', type: 'string' },
-  'utiqIdSystem': { alias: 'utiqId', type: 'localstorage' },
-  'utiqMtpIdSystem': { alias: 'utiqMtpId', type: 'localstorage' },
+  'utiqIdSystem': { alias: 'utiqId', type: 'string' },
+  'utiqMtpIdSystem': { alias: 'utiqMtpId', type: 'string' },
+  'pubProvidedIdSystem': { alias: 'pubProvidedId', type: 'object', expectedKeys: ['source', 'uids'] },
+  // TODO: Ask about this schema
+  'ringierIdSystems': { alias: null, type: null },
 };
 
 
@@ -21,6 +24,7 @@ export function testIdSystemIntegration({ pbjsUserIds, wrapperConfigIdSystems, d
   const dynamicSettingsUserIds = dynamicSettings?.setConfig?.userSync?.userIds || []
 
   // Utiq specific checks
+  // Todo: figure out how to accept utiq consent so that it can be tested more thoroughly
   const utiqDynamicSettings = dynamicSettingsUserIds.filter(userId => userId.name.includes('utiq'))
   const utiqWrapperConfig = wrapperConfigIdSystems.filter(idSystem => idSystem.includes('utiq'))
 
@@ -37,9 +41,13 @@ export function testIdSystemIntegration({ pbjsUserIds, wrapperConfigIdSystems, d
       success = false
     }
 
-    const isBothUtiqIdSystemsEnabled = utiqDynamicSettings.length === 2 && utiqWrapperConfig.length === 2
+    const keys = ['utiqId', 'utiqMtpId'];
+    const isBothUtiqIdSystemsEnabled = keys.every(k =>
+      utiqDynamicSettings.some(userId => userId.name?.includes(k)) &&
+      utiqWrapperConfig.some(idSystem => idSystem?.includes(k))
+    );
     if (!isBothUtiqIdSystemsEnabled) {
-      console.error(domain.toUpperCase(), 'Both utiq id systems are not enabled in the dynamic settings and the wrapper config but the expected number of utiq id systems enabled was unexpected\n')
+      console.error(domain.toUpperCase(), 'Both utiq and utiqMtp needs to be enabled in dynamic settings and in the wrapper config\n' + JSON.stringify({ utiqDynamicSettings, utiqWrapperConfig }, null, 2))
       success = false
     }
   }
@@ -76,10 +84,9 @@ export function testIdSystemIntegration({ pbjsUserIds, wrapperConfigIdSystems, d
     console.error(domain.toUpperCase(), 'No user sync logs found\n')
     success = false
   } else if (idxSuccessfulUserSyncLog === -1) {
-    console.error(domain.toUpperCase(), 'User sync update log found, but not all id systems were updated:', filteredLogs.map(log => log.text.slice(110)))
+    console.error(domain.toUpperCase(), 'User sync update log found, but not all id systems were updated:', { idSystems: wrapperConfigIdSystems, logs: filteredLogs.map(log => log.text.slice(110)) })
     success = false
   }
-
 
   if (success) {
     console.log('All configured id systems are enabled, their respective client-side user IDs are present and Prebid user sync was successful.\n')
