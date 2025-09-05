@@ -1,32 +1,42 @@
 // Helper functions for the log scraper
 import fs from 'fs'
+import { fileURLToPath } from 'url'
 
-export async function getYLSiteName(page) {
-  const ylSiteName = await page.evaluate(() => {
-    const name = window.YLHH?.bidder?.settings?.name
+export async function getSiteSettings(page) {
+  const siteSettings = await page.evaluate(() => {
+    const name = window.YLHH?.bidder?.settings
     return name
   })
-  return ylSiteName
+
+  if (typeof siteSettings !== 'object') {
+    throw new Error(`Failed to get site config: ${JSON.stringify(siteSettings)}`)
+  }
+
+  return siteSettings
 }
 
-export async function getDynamicSettings(page) {
-  const dynamicSettings = await page.evaluate(() => {
-    const settings = window.YLHH?.bidder?.settings?.pbjs_dynamic_configs
-    return settings
+export async function isMetaTagEnabled(page) {
+  const result = await page.evaluate(() => {
+    const mt = window?.SDG?.Publisher
+    return mt
   })
-  return dynamicSettings
+  return result
 }
 
 export function setupEventListeners(page, siteLogs) {
+  const wrapperRelatedRequests = ['hb.adscale.de/dsh', 'prod-ingestion.tracking', 's2s.yieldlove-ad-serving.net', 'cdn-a.yieldlove.com', 'metatag/live/']
+  const wrapperRelatedKeyWords = ['Yieldlove', 'Prebid']
   page.on('console', msg => {
     const entry = { type: msg.type(), text: msg.text(), ts: Date.now() }
+    entry.text.length > 200 && (entry.text = entry.text.substring(0, 200) + '...')
+
     if (entry.type === 'error') {
       siteLogs.errors.push(entry)
     }
     else if (entry.type === 'warning') {
       siteLogs.warnings.push(entry)
     }
-    else {
+    else if (wrapperRelatedKeyWords.some(log => entry.text.includes(log))) {
       siteLogs.logs.push(entry)
     }
   });
@@ -38,6 +48,14 @@ export function setupEventListeners(page, siteLogs) {
   page.on('requestfailed', req => siteLogs.requestsFailed.push({
     url: req.url(), method: req.method(), error: req.failure()?.errorText, ts: Date.now()
   }));
+
+  page.on('request', req => {
+    if (wrapperRelatedRequests.some(request => req.url().includes(request))) {
+      siteLogs.wrapperNetworkRequests.push({
+        url: req.url(), method: req.method(), payload: req.postDataJSON(), ts: Date.now()
+      })
+    }
+  })
 }
 
 export async function getIdData(page) {
@@ -110,7 +128,8 @@ export function getRandomViewport() {
 }
 
 
-export async function simulateRealisticNavigation(page, domain, isDebugExtension = false) {
+export async function simulateRealisticNavigation(page, domain) {
+  console.log('Simulating realistic navigation...')
   const referrers = [
     'https://www.google.com/search?q=' + encodeURIComponent(domain),
     'https://www.bing.com/search?q=' + encodeURIComponent(domain),
@@ -127,24 +146,16 @@ export async function simulateRealisticNavigation(page, domain, isDebugExtension
     }).catch(() => { });
   }
 
-  // Navigate to the target domain. Using the debug extension is more reliable than using the query parameter
-  const url = `https://${domain}${isDebugExtension ? '' : '?yldebug=true'}`
+
+  const url = `https://${domain}`
   await page.goto(url, {
     waitUntil: 'domcontentloaded',
     timeout: 10000,
     referer: referrer
   });
-
-
-  // Some cmp's requires mouse movement or wheel to be scrolled
-  await simulateMouseMovement(page, 500);
-
-  // Constent is quite slow to load on some sites hence 5-7 seconds is needed
-  await page.waitForTimeout(getRandomDelay(5000, 7000))
 }
 
-
-async function simulateMouseMovement(page, durationMs = 1500) {
+export async function simulateMouseMovement(page, durationMs = 1500) {
   const vp = page.viewportSize() || { width: 1366, height: 768 }
   let x = Math.floor(vp.width * 0.5)
   let y = Math.floor(vp.height * 0.5)
@@ -171,4 +182,13 @@ async function simulateMouseMovement(page, durationMs = 1500) {
     x = tx
     y = ty
   }
+}
+
+
+// Enable yieldlove/prebid logs to appear in the console
+export async function appendDebugModeScript(page) {
+  const yieldloveDebugScript = fileURLToPath(new URL('./enableDebugMode.js', import.meta.url));
+  await page.addScriptTag({ path: yieldloveDebugScript });
+
+  console.log('Enabling yieldlove debug mode...');
 }

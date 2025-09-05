@@ -1,12 +1,13 @@
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
-const MODULE_DIR = __dirname;
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CONSENT_MANAGERS_FILE = path.join(MODULE_DIR, "cmp-list.json");
 
-function getConsentManagers() {
+export function getConsentManagers() {
     try {
         if (!fs.existsSync(CONSENT_MANAGERS_FILE)) return [];
         const raw = fs.readFileSync(CONSENT_MANAGERS_FILE, "utf8");
@@ -18,7 +19,7 @@ function getConsentManagers() {
     }
 }
 
-async function clickConsentManager(page) {
+export async function clickConsentManager(page) {
     const consentManagers = getConsentManagers();
     for (const cmp of consentManagers) {
         let parentLocator = page;
@@ -115,8 +116,3 @@ async function performJavaScriptClickOnElement(locatorContext, selector) {
     console.log({ result })
     return result
 }
-
-module.exports = {
-    getConsentManagers,
-    clickConsentManager
-};

@@ -1,18 +1,24 @@
+// Checks ifid systems and user ids are correctly configured in the wrapper config and the dynamic settings
+// The test also checks if the client-side user IDs are present and if Prebid's user sync was successful/
+// Utiq's id system requires one to accept an additional utiq specific consent, which is not tested in this test. Hence only the utiq configuration is tested.
+
+// Id system name: client-side user id schema
 const EXPECTED_ID_SYSTEMS_SCHEMA = {
   'criteoIdSystem': { alias: 'criteoId', type: 'string' },
   'id5IdSystem': { alias: 'id5id', type: 'object', expectedKeys: ['uid', 'ext'] },
   'sharedIdSystem': { alias: 'pubcid', type: 'string' },
-  // TODO: Ask someone how this id is suppouse to look like...
-  'identityLinkIdSystem': { alias: 'identityLinkId', type: 'string' },
+  'identityLinkIdSystem': { alias: 'identityLink', type: 'object', expectedKeys: ['pid', 'notUse3P'] },
   'utiqIdSystem': { alias: 'utiqId', type: 'string' },
   'utiqMtpIdSystem': { alias: 'utiqMtpId', type: 'string' },
   'pubProvidedIdSystem': { alias: 'pubProvidedId', type: 'object', expectedKeys: ['source', 'uids'] },
   // TODO: Ask about this schema
   'ringierIdSystems': { alias: null, type: null },
+  // TODO: Ask about this schema
+  'netIdSystem': { alias: 'unknown', type: 'string' },
 };
 
 
-export function testIdSystemIntegration({ pbjsUserIds, wrapperConfigIdSystems, dynamicSettings, prebidLogs, domain }) {
+export function testIdSystemIntegration({ pbjsUserIds, wrapperConfigIdSystems, dynamicConfig, prebidLogs, domain }) {
   let success = true
 
   if (!wrapperConfigIdSystems.length || !pbjsUserIds) {
@@ -21,7 +27,7 @@ export function testIdSystemIntegration({ pbjsUserIds, wrapperConfigIdSystems, d
     return
   }
 
-  const dynamicSettingsUserIds = dynamicSettings?.setConfig?.userSync?.userIds || []
+  const dynamicSettingsUserIds = dynamicConfig?.setConfig?.userSync?.userIds || []
 
   // Utiq specific checks
   // Todo: figure out how to accept utiq consent so that it can be tested more thoroughly
@@ -79,8 +85,11 @@ export function testIdSystemIntegration({ pbjsUserIds, wrapperConfigIdSystems, d
 
   const filteredLogs = prebidLogs.filter(log => log.text.includes('INFO: User ID - usersync config updated for'))
   const idxSuccessfulUserSyncLog = filteredLogs.findIndex((log) => log.text.includes(`usersync config updated for ${wrapperConfigIdSystems.length.toString()}`))
-
-  if (!filteredLogs.length) {
+  if (!prebidLogs.length) {
+    console.error(domain.toUpperCase(), 'No logs found\n')
+    success = false
+  }
+  else if (!filteredLogs.length) {
     console.error(domain.toUpperCase(), 'No user sync logs found\n')
     success = false
   } else if (idxSuccessfulUserSyncLog === -1) {

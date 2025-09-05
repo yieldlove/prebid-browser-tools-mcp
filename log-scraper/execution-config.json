@@ -1,13 +1,31 @@
 {
   "domains": [
-    "mainpost.de",
-    "duden.de/suchen/dudenonline/hallo"
+    "infranken.de"
   ],
   "sendLogsToServer": true,
   "testIdSystems": true,
   "testTCF2": true,
-  "headless": true,
+  "testPriceOptimization": true,
+  "headless": false,
   "wipeBrowserUserData": false,
   "preserveLogs": false,
-  "loadDebugExtension": true
+  "publishers": {
+    "highRevenue": [
+      "infranken.de",
+      "duden.de/suchen/dudenonline/hallo",
+      "kino.de",
+      "desired.de/lifestyle",
+      "familie.de",
+      "giga.de",
+      "freenet.de",
+      "ruhr24.de",
+      "sport1.de",
+      "transfermarkt.de",
+      "t-online.de"
+    ],
+    "dev": [
+      "mathebibel.de",
+      "cdn-xxx.yieldlove.com/test/standard_integration.html?yieldlove.es"
+    ]
+  }
 }

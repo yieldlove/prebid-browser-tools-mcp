@@ -1,0 +1,14 @@
+{
+  "name": "log-scraper",
+  "version": "1.0.0",
+  "main": "scraper.mjs",
+  "type": "module",
+  "scripts": {
+    "clean-logs": "rm -rf logs/temp/",
+    "scrape": "mkdir -p logs/temp/terminal-logs && script -q logs/temp/terminal-logs/$(date +%Y-%m-%dT%H-%M-%S).log node scraper.mjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
