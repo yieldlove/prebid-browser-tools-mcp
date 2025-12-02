@@ -706,7 +706,9 @@ app.get("/bid-requests/:auctionId", (req, res) => {
     return
   }
 
-  if (queryParams.condensed) {
+  if (queryParams.condensed === 'false') {
+    res.json(bidRequest);
+  } else {
     const randomBidder = bidRequest[Math.floor(Math.random() * (bidRequest.length - 1))]
     const bidderEntries = Object.entries(randomBidder)
 
@@ -736,8 +738,6 @@ app.get("/bid-requests/:auctionId", (req, res) => {
     delete condensedBidderFields.gdprConsent.vendorData
 
     res.json([condensedBidderFields]);
-  } else {
-    res.json(bidRequest);
   }
 });
 
@@ -777,13 +777,13 @@ app.get("/bids-received/:auctionId", (req, res) => {
     return
   }
 
-  if (queryParams.condensed) {
+  if (queryParams.condensed === 'false') {
+    res.json(bidsReceived[auctionId]);
+  } else {
     const randomIndex = Math.floor(Math.random() * bids.length)
     const randomBid = bids[randomIndex]
 
     res.json([randomBid])
-  } else {
-    res.json(bidsReceived[auctionId]);
   }
 });
 
